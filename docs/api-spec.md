@@ -41,7 +41,40 @@ LLM Agent <──JSON────── VS Code Extension
 
 ### 2.2 Port Discovery
 
-The extension writes connection information to a JSON file on startup. Files are stored per workspace under the user's home directory, using the workspace absolute path to avoid hash computation (no platform-specific tools like `md5sum` required).
+The extension supports two port modes, controlled by the **`semcode.port`** VS Code setting.
+
+#### Fixed port (recommended for HTTP hooks)
+
+Set `semcode.port` to a non-zero integer in VS Code settings:
+
+```json
+// .vscode/settings.json
+{ "semcode.port": 4238 }
+```
+
+The server will always bind to `http://127.0.0.1:4238`. This is the preferred mode when using **Claude Code HTTP hooks**, because the hook URL must be configured statically — no shell command is needed to discover the port at runtime.
+
+Example HTTP hook configuration:
+
+```json
+// .claude/settings.json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [{ "type": "http", "url": "http://127.0.0.1:4238/health" }]
+      }
+    ]
+  }
+}
+```
+
+If the configured port is already in use when VS Code starts, the extension logs a warning and falls back to a random OS-assigned port (same as the default mode below).
+
+#### Dynamic port (default)
+
+When `semcode.port` is `0` (the default), the OS assigns a random available port from the ephemeral range. The extension writes the actual port to a JSON file on startup:
 
 ```
 Location: ~/.semcode/ports/<workspace-absolute-path>/port.json
@@ -671,7 +704,7 @@ All endpoints return standard HTTP status codes. Error responses include a JSON 
 - **Localhost only:** The HTTP server binds exclusively to `127.0.0.1`. It is not accessible from external networks.
 - **No authentication:** Since access is restricted to the local machine, no authentication mechanism is required. If needed in the future, a shared secret via environment variable can be added.
 - **Read-only:** The API is strictly read-only. It cannot modify files, execute code, or change VS Code settings.
-- **Ephemeral port:** The server uses a dynamically assigned port (port 0), reducing the risk of port conflicts and predictability.
+- **Port binding:** By default the server uses a dynamically assigned ephemeral port. A fixed port can be configured via `semcode.port` for use with HTTP hooks, but this only affects which local port is bound — the server remains inaccessible from external networks.
 
 ---
 

@@ -46,11 +46,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // ------------------------------------------------------------------------
 
     try {
-        const port = await httpServer.start();
+        const preferredPort = vscode.workspace.getConfiguration('semcode').get<number>('port', 0);
+        const port = await httpServer.start(preferredPort);
         await writePortFile(workspaceRoot, port);
 
+        const portLabel = preferredPort !== 0 && port === preferredPort ? `${port} (fixed)` : `${port}`;
         console.log(`[LSP Relay] Listening on http://127.0.0.1:${port}`);
-        vscode.window.setStatusBarMessage(`LSP Relay: port ${port}`, 5000);
+        vscode.window.setStatusBarMessage(`LSP Relay: port ${portLabel}`, 5000);
 
         context.subscriptions.push({
             dispose: async () => {

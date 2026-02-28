@@ -25,7 +25,35 @@ via a local HTTP API. No CLI or Node.js installation required — use `curl` dir
 
 ## Port Discovery
 
-The extension writes connection info to `~/.semcode/ports/<workspace-path>/port.json`.
+### Option A — Fixed port (recommended for HTTP hooks)
+
+Set **`semcode.port`** in VS Code settings to a fixed value (e.g. `4238`):
+
+```json
+// .vscode/settings.json
+{ "semcode.port": 4238 }
+```
+
+The server will always listen on `http://127.0.0.1:4238`. No shell command needed — configure Claude Code HTTP hooks directly:
+
+```json
+// .claude/settings.json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [{ "type": "http", "url": "http://127.0.0.1:4238/health" }]
+      }
+    ]
+  }
+}
+```
+
+### Option B — Dynamic port (default)
+
+When `semcode.port` is `0` (the default), the OS assigns a random port each time VS Code starts.
+Read the port from the file the extension writes on startup:
 
 ```bash
 # Read port for the current workspace
@@ -154,7 +182,7 @@ curl -s -X POST "http://127.0.0.1:${PORT}/workspace_overview" \
 
 ## Recommended Workflow
 
-1. **Discover port** — Read `~/.semcode/ports$(pwd)/port.json`
+1. **Resolve base URL** — Use `http://127.0.0.1:<port>` where `<port>` is the fixed port from settings, or read from `~/.semcode/ports$(pwd)/port.json`
 2. **Overview** — `POST /workspace_overview` to understand project structure
 3. **Search** — `POST /search` to find relevant symbols
 4. **Inspect** — `POST /inspect` to get full details on a symbol
@@ -164,5 +192,6 @@ curl -s -X POST "http://127.0.0.1:${PORT}/workspace_overview" \
 ## Troubleshooting
 
 - **Port file not found**: VS Code extension is not running, or the workspace path doesn't match
-- **Connection refused**: Extension may have restarted — re-read the port file
+- **Connection refused**: Extension may have restarted — re-read the port file, or check that the fixed port is correctly set in `semcode.port`
 - **Empty results**: Language server may still be initializing — wait a few seconds and retry
+- **Fixed port not working**: Another process may be using the port — change `semcode.port` to a different value and restart VS Code

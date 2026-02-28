@@ -26,7 +26,19 @@
         "command": "lsp-relay.installSkill",
         "title": "LSP Relay: Install Skill"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "LSP Relay",
+      "properties": {
+        "semcode.port": {
+          "type": "integer",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 65535,
+          "markdownDescription": "Port for the LSP Relay HTTP server.\n\n- `0` (default): OS assigns a random available port. The actual port is written to `~/.semcode/ports/<workspace>/port.json`.\n- Any other value (e.g. `4238`): The extension binds to that specific port. Use a fixed port when configuring Claude Code HTTP hooks so the URL is predictable without a shell command.\n\n**Restart VS Code** after changing this setting."
+        }
+      }
+    }
   },
   "scripts": {
     "build": "node build.mjs",

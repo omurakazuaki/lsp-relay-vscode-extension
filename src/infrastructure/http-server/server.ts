@@ -17,8 +17,14 @@ export interface RouteHandlers {
 }
 
 /**
- * Minimal HTTP server that binds exclusively to 127.0.0.1 on an
- * OS-assigned ephemeral port.
+ * Minimal HTTP server that binds exclusively to 127.0.0.1.
+ *
+ * By default (preferredPort = 0) the OS assigns a random ephemeral port.
+ * Pass a non-zero value to request a specific port — useful when callers
+ * need a predictable URL (e.g. Claude Code HTTP hooks).
+ *
+ * If the preferred port is already in use the server falls back to a
+ * random OS-assigned port and logs a warning so the operator knows.
  */
 export class LspRelayHttpServer {
     private server: http.Server | null = null;
@@ -26,7 +32,7 @@ export class LspRelayHttpServer {
 
     constructor(private readonly handlers: RouteHandlers) {}
 
-    start(): Promise<number> {
+    start(preferredPort = 0): Promise<number> {
         return new Promise((resolve, reject) => {
             this.server = http.createServer((req, res) => {
                 this.dispatch(req, res).catch((err: unknown) => {
@@ -37,12 +43,32 @@ export class LspRelayHttpServer {
                     }
                 });
             });
-            this.server.listen(0, '127.0.0.1', () => {
-                const addr = this.server!.address() as net.AddressInfo;
-                this.port = addr.port;
-                resolve(this.port);
-            });
-            this.server.on('error', reject);
+
+            const bindPort = (port: number, allowFallback: boolean) => {
+                const onListening = () => {
+                    this.server!.off('error', onError);
+                    const addr = this.server!.address() as net.AddressInfo;
+                    this.port = addr.port;
+                    resolve(this.port);
+                };
+                const onError = (err: NodeJS.ErrnoException) => {
+                    this.server!.off('listening', onListening);
+                    if (err.code === 'EADDRINUSE' && allowFallback) {
+                        console.warn(
+                            `[LSP Relay] Port ${port} is already in use — falling back to a random port. ` +
+                            `Update the semcode.port setting if you need a fixed URL for HTTP hooks.`,
+                        );
+                        bindPort(0, false);
+                    } else {
+                        reject(err);
+                    }
+                };
+                this.server!.once('listening', onListening);
+                this.server!.once('error', onError);
+                this.server!.listen(port, '127.0.0.1');
+            };
+
+            bindPort(preferredPort, preferredPort !== 0);
         });
     }
 
