@@ -4,38 +4,9 @@ import type { SymbolSearcher } from '../../application/ports/symbol-searcher.por
 import type { Result } from '../../shared/result.js';
 import { Ok, Err } from '../../shared/result.js';
 import type { AppError } from '../../domain/errors/app-error.js';
-import type { SymbolInfo, SymbolKind } from '../../domain/entities/symbol-info.entity.js';
+import type { SymbolInfo } from '../../domain/entities/symbol-info.entity.js';
 import type { SearchQuery } from '../../domain/value-objects/search-query.value-object.js';
-
-/** Maps vscode.SymbolKind numeric values to domain SymbolKind strings. */
-const VSCODE_KIND_MAP: Readonly<Record<number, SymbolKind>> = {
-    [vscode.SymbolKind.File]: 'unknown',
-    [vscode.SymbolKind.Module]: 'module',
-    [vscode.SymbolKind.Namespace]: 'namespace',
-    [vscode.SymbolKind.Package]: 'module',
-    [vscode.SymbolKind.Class]: 'class',
-    [vscode.SymbolKind.Method]: 'method',
-    [vscode.SymbolKind.Property]: 'property',
-    [vscode.SymbolKind.Field]: 'field',
-    [vscode.SymbolKind.Constructor]: 'constructor',
-    [vscode.SymbolKind.Enum]: 'enum',
-    [vscode.SymbolKind.Interface]: 'interface',
-    [vscode.SymbolKind.Function]: 'function',
-    [vscode.SymbolKind.Variable]: 'variable',
-    [vscode.SymbolKind.Constant]: 'constant',
-    [vscode.SymbolKind.String]: 'unknown',
-    [vscode.SymbolKind.Number]: 'unknown',
-    [vscode.SymbolKind.Boolean]: 'unknown',
-    [vscode.SymbolKind.Array]: 'unknown',
-    [vscode.SymbolKind.Object]: 'unknown',
-    [vscode.SymbolKind.Key]: 'unknown',
-    [vscode.SymbolKind.Null]: 'unknown',
-    [vscode.SymbolKind.EnumMember]: 'enum_member',
-    [vscode.SymbolKind.Struct]: 'struct',
-    [vscode.SymbolKind.Event]: 'unknown',
-    [vscode.SymbolKind.Operator]: 'unknown',
-    [vscode.SymbolKind.TypeParameter]: 'type',
-};
+import { VSCODE_KIND_MAP } from './adapter-utils.js';
 
 /**
  * Adapter: implements SymbolSearcher using VS Code built-in commands.

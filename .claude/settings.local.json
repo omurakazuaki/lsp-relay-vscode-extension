@@ -6,7 +6,9 @@
       "Bash(npm run typecheck)",
       "Bash(npm run build)",
       "Bash(code --version)",
-      "Bash(npx --yes @vscode/vsce --version)"
+      "Bash(npx --yes @vscode/vsce --version)",
+      "Bash(npm install)",
+      "Bash(npm test)"
     ]
   }
 }
