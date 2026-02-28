@@ -20,6 +20,8 @@ import { VscodeDiagnosticsProviderAdapter } from './infrastructure/vscode-adapte
 import { VscodeWorkspaceOverviewProviderAdapter } from './infrastructure/vscode-adapter/vscode-workspace-overview-provider.adapter.js';
 import { writePortFile, removePortFile } from './port-discovery.js';
 import { installCli, repairCliSymlink } from './infrastructure/cli/cli-installer.js';
+import { isCliInstalled, installSkill } from './infrastructure/skill/skill-installer.js';
+import type { Platform } from './infrastructure/skill/skill-installer.js';
 
 let httpServer: LspRelayHttpServer | null = null;
 
@@ -81,6 +83,62 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                         'Ensure ~/.local/bin is in your PATH to use it.',
                     );
                 }
+            }),
+        );
+        context.subscriptions.push(
+            vscode.commands.registerCommand('lsp-relay.installSkill', async () => {
+                const cliReady = await isCliInstalled();
+                if (!cliReady) {
+                    const action = await vscode.window.showWarningMessage(
+                        'SemCode CLI is not installed. Install it first?',
+                        'Install CLI',
+                        'Cancel',
+                    );
+                    if (action !== 'Install CLI') return;
+                    await vscode.commands.executeCommand('lsp-relay.installCli');
+                    // Re-check after install
+                    if (!(await isCliInstalled())) return;
+                }
+
+                const picked = await vscode.window.showQuickPick(
+                    [
+                        { label: 'Claude Code', value: 'claude' as Platform },
+                        { label: 'GitHub Copilot', value: 'copilot' as Platform },
+                        { label: 'Both', value: 'all' },
+                    ],
+                    { placeHolder: 'Select target LLM platform' },
+                );
+                if (!picked) return;
+
+                const platforms: Platform[] =
+                    picked.value === 'all' ? ['claude', 'copilot'] : [picked.value as Platform];
+
+                const result = await installSkill({
+                    workspaceRoot,
+                    platforms,
+                    onConflict: async (p) => {
+                        const ans = await vscode.window.showWarningMessage(
+                            `${p} already exists. Overwrite?`,
+                            'Overwrite',
+                            'Skip',
+                        );
+                        return ans === 'Overwrite';
+                    },
+                });
+
+                const msgs: string[] = [];
+                if (result.installed.length > 0) {
+                    msgs.push(`Installed: ${result.installed.join(', ')}`);
+                }
+                if (result.skipped.length > 0) {
+                    msgs.push(`Skipped: ${result.skipped.join(', ')}`);
+                }
+                if (result.errors.length > 0) {
+                    msgs.push(`Errors: ${result.errors.join('; ')}`);
+                }
+                void vscode.window.showInformationMessage(
+                    `[SemCode Skills] ${msgs.join(' | ')}`,
+                );
             }),
         );
     } catch (err) {

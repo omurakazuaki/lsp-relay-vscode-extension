@@ -1,0 +1,6 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        ".github/skills/semantic-search/scripts/semcode": true,
+        "semcode": true
+    }
+}

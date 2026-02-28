@@ -1,4 +1,6 @@
 import * as esbuild from 'esbuild';
+import * as fs from 'fs';
+import * as path from 'path';
 
 const args = process.argv.slice(2);
 const buildExtension = args.includes('--extension') || (!args.includes('--cli'));
@@ -18,6 +20,14 @@ if (buildExtension) {
     });
     console.log('Build complete: out/extension.js');
 }
+
+// Copy SKILL.md template to out/ so it can be read at runtime
+fs.mkdirSync('out', { recursive: true });
+fs.copyFileSync(
+    path.join('src', 'infrastructure', 'skill', 'SKILL.md'),
+    path.join('out', 'SKILL.md'),
+);
+console.log('Copied: out/SKILL.md');
 
 if (buildCli) {
     await esbuild.build({

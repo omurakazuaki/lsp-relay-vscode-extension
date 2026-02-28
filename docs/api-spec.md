@@ -62,7 +62,7 @@ Location: $TMPDIR/vscode-semantic-search-<workspace_hash>.json
 
 The CLI (`semcode`) is bundled inside the extension's `out/cli.js`. To make it available as a system command, the extension provides a VS Code command that creates a symbolic link.
 
-**Installation command:** `SemCode: Install CLI to PATH`
+**Installation command:** `LSP Relay: Install CLI`
 
 This command creates a symlink at `~/.local/bin/semcode` → `<extensionPath>/out/cli.js`. The user must ensure `~/.local/bin` is in their `PATH`.
 
@@ -80,6 +80,88 @@ Activation flow:
 ```
 
 > **Note:** The symlink points to the file, not a copy. No separate CLI update step is needed after the initial install.
+
+### 2.4 LLM Skill Installation
+
+The extension can install **skill definitions** into the current workspace so that LLM agents (Claude Code, GitHub Copilot, etc.) automatically discover and use SemCode for code navigation.
+
+**Installation command:** `LSP Relay: Install SKILL`
+
+When executed, the command asks the user to select a target LLM platform and creates the following files in the workspace root:
+
+#### Target directories
+
+| Platform       | Skill directory                           | Scripts directory                                |
+| -------------- | ----------------------------------------- | ------------------------------------------------ |
+| Claude Code    | `.claude/skills/semantic-search/SKILL.md` | `.claude/skills/semantic-search/scripts/semcode` |
+| GitHub Copilot | `.github/skills/semantic-search/SKILL.md` | `.github/skills/semantic-search/scripts/semcode` |
+
+- **`SKILL.md`** — A skill definition file with YAML frontmatter (`name`, `description`) followed by usage instructions for SemCode commands.
+- **`scripts/semcode`** — A symbolic link to the installed `semcode` CLI (`~/.local/bin/semcode`). This allows the LLM to invoke `semcode` relative to the skill directory.
+
+#### SKILL.md template
+
+````markdown
+---
+name: semantic-search
+description: >-
+  Use when you need to search for symbols, inspect code details, find references,
+  or navigate the codebase using VS Code's language server capabilities.
+  Prefer this over grep or file reading for type-aware code navigation.
+---
+
+# SemCode — Semantic Code Search
+
+SemCode leverages the VS Code language server to provide type-aware code
+navigation. The `semcode` CLI is available at `scripts/semcode`.
+
+## When to Use
+
+- Finding function, class, or type definitions by name or description
+- Inspecting detailed type signatures, documentation, and source code
+- Finding all references and usages of a symbol across the workspace
+- Understanding file structure (imports, exports, classes, functions)
+- Checking for compilation errors and warnings
+- Getting a high-level overview of the project structure
+
+## Commands
+
+```bash
+# Search for symbols by name or description
+semcode search "<query>" [--kinds function,class] [--limit 10]
+
+# Inspect a symbol at a specific location
+semcode inspect "<file>:<line>" [--include signature,doc,body]
+
+# Find all references to a symbol
+semcode refs "<file>:<line>" [--context-lines 2] [--limit 30]
+
+# Get file outline (imports, exports, symbols)
+semcode outline "<file>" [--depth 2]
+
+# Check diagnostics (errors, warnings)
+semcode diagnostics [<file>] [--severity error,warning]
+
+# Get workspace overview
+semcode overview [--depth 2]
+```
+
+## Recommended Workflow
+
+1. `semcode overview` — Understand project structure
+2. `semcode search "<query>"` — Find relevant symbols
+3. `semcode inspect "<file>:<line>"` — Get full details
+4. `semcode refs "<file>:<line>"` — Understand usage patterns
+5. `semcode diagnostics` — Verify correctness after changes
+````
+
+#### Prerequisite
+
+The `semcode` CLI must be installed first (Section 2.3). If it is not installed when `Install Skills` is executed, the command will prompt the user to install it first.
+
+#### Overwrite behavior
+
+If the skill files already exist, the command asks for confirmation before overwriting. This prevents accidental loss of user customizations to the SKILL.md.
 
 ---
 
@@ -487,15 +569,16 @@ The CLI provides a command-line wrapper around the HTTP API, designed for invoca
 
 ### 4.1 Commands
 
-| Command                         | Description                                                                            |
-| ------------------------------- | -------------------------------------------------------------------------------------- |
-| `semcode search <query>`        | Search for symbols. Flags: `--kinds`, `--scope`, `--path`, `--limit`, `--include-body` |
-| `semcode inspect <file>:<line>` | Get detailed symbol info. Flag: `--include <fields>`                                   |
-| `semcode refs <file>:<line>`    | Find all references. Flags: `--context-lines`, `--limit`                               |
-| `semcode outline <file>`        | Get file structure. Flag: `--depth`                                                    |
-| `semcode diagnostics [file]`    | Get errors/warnings. Flag: `--severity`                                                |
-| `semcode overview`              | Get workspace summary. Flag: `--depth`                                                 |
-| `semcode status`                | Check if VS Code extension is running and reachable.                                   |
+| Command                         | Description                                                                               |
+| ------------------------------- | ----------------------------------------------------------------------------------------- |
+| `semcode search <query>`        | Search for symbols. Flags: `--kinds`, `--scope`, `--path`, `--limit`, `--include-body`    |
+| `semcode inspect <file>:<line>` | Get detailed symbol info. Flag: `--include <fields>`                                      |
+| `semcode refs <file>:<line>`    | Find all references. Flags: `--context-lines`, `--limit`                                  |
+| `semcode outline <file>`        | Get file structure. Flag: `--depth`                                                       |
+| `semcode diagnostics [file]`    | Get errors/warnings. Flag: `--severity`                                                   |
+| `semcode overview`              | Get workspace summary. Flag: `--depth`                                                    |
+| `semcode status`                | Check if VS Code extension is running and reachable.                                      |
+| `semcode install-skills`        | Install LLM skill definitions into the workspace. Flag: `--target <claude\|copilot\|all>` |
 
 ### 4.2 Global Flags
 
