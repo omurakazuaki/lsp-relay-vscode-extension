@@ -19,17 +19,13 @@ import { VscodeFileOutlineProviderAdapter } from './infrastructure/vscode-adapte
 import { VscodeDiagnosticsProviderAdapter } from './infrastructure/vscode-adapter/vscode-diagnostics-provider.adapter.js';
 import { VscodeWorkspaceOverviewProviderAdapter } from './infrastructure/vscode-adapter/vscode-workspace-overview-provider.adapter.js';
 import { writePortFile, removePortFile } from './port-discovery.js';
-import { installCli, repairCliSymlink } from './infrastructure/cli/cli-installer.js';
-import { isCliInstalled, installSkill } from './infrastructure/skill/skill-installer.js';
+import { installSkill } from './infrastructure/skill/skill-installer.js';
 import type { Platform } from './infrastructure/skill/skill-installer.js';
 
 let httpServer: LspRelayHttpServer | null = null;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
-
-    // Auto-repair symlink if the extension was updated (spec section 2.3)
-    void repairCliSymlink(context.extensionPath);
 
     // --- Composition root ---------------------------------------------------
     const symbolSearcher = new VscodeSymbolSearcherAdapter(workspaceRoot);
@@ -73,33 +69,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         );
 
         context.subscriptions.push(
-            vscode.commands.registerCommand('lsp-relay.installCli', async () => {
-                const err = await installCli(context.extensionPath);
-                if (err) {
-                    void vscode.window.showErrorMessage(`[LSP Relay] CLI install failed: ${err}`);
-                } else {
-                    void vscode.window.showInformationMessage(
-                        'SemCode CLI installed at ~/.local/bin/semcode. ' +
-                        'Ensure ~/.local/bin is in your PATH to use it.',
-                    );
-                }
-            }),
-        );
-        context.subscriptions.push(
             vscode.commands.registerCommand('lsp-relay.installSkill', async () => {
-                const cliReady = await isCliInstalled();
-                if (!cliReady) {
-                    const action = await vscode.window.showWarningMessage(
-                        'SemCode CLI is not installed. Install it first?',
-                        'Install CLI',
-                        'Cancel',
-                    );
-                    if (action !== 'Install CLI') return;
-                    await vscode.commands.executeCommand('lsp-relay.installCli');
-                    // Re-check after install
-                    if (!(await isCliInstalled())) return;
-                }
-
                 const picked = await vscode.window.showQuickPick(
                     [
                         { label: 'Claude Code', value: 'claude' as Platform },
@@ -118,7 +88,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     platforms,
                     onConflict: async (p) => {
                         const ans = await vscode.window.showWarningMessage(
-                            `${p} already exists. Overwrite?`,
+                            `${p} has been modified. Overwrite with bundled version?`,
                             'Overwrite',
                             'Skip',
                         );
@@ -131,7 +101,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     msgs.push(`Installed: ${result.installed.join(', ')}`);
                 }
                 if (result.skipped.length > 0) {
-                    msgs.push(`Skipped: ${result.skipped.join(', ')}`);
+                    msgs.push(`Skipped (up to date): ${result.skipped.join(', ')}`);
                 }
                 if (result.errors.length > 0) {
                     msgs.push(`Errors: ${result.errors.join('; ')}`);

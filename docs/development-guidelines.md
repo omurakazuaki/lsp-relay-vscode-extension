@@ -43,16 +43,16 @@ src/
   infrastructure/    # Adapters: VS Code API, HTTP server, file system
     vscode-adapter/
     http-server/
-    cli/
+    skill/
   shared/            # Cross-cutting: logger, result types, constants
 ```
 
-| Layer | Contains | Depends On |
-|-------|----------|------------|
-| Domain | Entities, Value Objects, Domain Errors | Nothing (zero dependencies) |
-| Application | Use Cases, Port Interfaces | Domain only |
-| Infrastructure | VS Code Adapter, HTTP Server, CLI | Application + Domain |
-| Shared | Result type, Logger interface, Constants | Nothing (utility only) |
+| Layer          | Contains                                      | Depends On                  |
+| -------------- | --------------------------------------------- | --------------------------- |
+| Domain         | Entities, Value Objects, Domain Errors        | Nothing (zero dependencies) |
+| Application    | Use Cases, Port Interfaces                    | Domain only                 |
+| Infrastructure | VS Code Adapter, HTTP Server, Skill Installer | Application + Domain        |
+| Shared         | Result type, Logger interface, Constants      | Nothing (utility only)      |
 
 #### 1.1.2 Dependency Rule
 
@@ -60,7 +60,7 @@ The fundamental rule: **source code dependencies must point inward.** Infrastruc
 
 ```typescript
 // ✅ GOOD: use-case imports domain entity
-import { Symbol } from '../domain/entities';
+import { Symbol } from "../domain/entities";
 
 // ✅ GOOD: use-case defines port interface
 export interface SymbolRepository {
@@ -68,10 +68,10 @@ export interface SymbolRepository {
 }
 
 // ❌ BAD: use-case imports vscode directly
-import * as vscode from 'vscode';
+import * as vscode from "vscode";
 
 // ❌ BAD: domain depends on infrastructure
-import { HttpServer } from '../infrastructure/http';
+import { HttpServer } from "../infrastructure/http";
 ```
 
 > **Enforcement:** ESLint import restriction rules must be configured to prevent cross-layer violations. CI will fail on any dependency rule breach.
@@ -133,13 +133,13 @@ The project uses TypeScript in strict mode with additional constraints.
 
 **The use of `any` is strictly prohibited.** No exceptions. Use proper types, generics, `unknown`, or discriminated unions instead.
 
-| Situation | Instead of `any` | Use |
-|-----------|-------------------|-----|
-| Unknown external data | `any` | `unknown` + type guard / zod schema |
-| Flexible function params | `any` | Generics: `<T extends Constraint>` |
-| JSON parsing | `JSON.parse() as any` | `zod.parse()` or manual validation |
-| Complex union | `any` | Discriminated union with `kind` field |
-| Third-party lib types | `any` | Declaration merging or wrapper type |
+| Situation                | Instead of `any`      | Use                                   |
+| ------------------------ | --------------------- | ------------------------------------- |
+| Unknown external data    | `any`                 | `unknown` + type guard / zod schema   |
+| Flexible function params | `any`                 | Generics: `<T extends Constraint>`    |
+| JSON parsing             | `JSON.parse() as any` | `zod.parse()` or manual validation    |
+| Complex union            | `any`                 | Discriminated union with `kind` field |
+| Third-party lib types    | `any`                 | Declaration merging or wrapper type   |
 
 ```typescript
 // ✅ GOOD: Proper type narrowing
@@ -232,33 +232,33 @@ const httpHandler = new SearchHandler(searchUseCase);
 
 ### 2.3 Naming Conventions
 
-| Category | Convention | Example |
-|----------|-----------|---------|
-| Files | kebab-case | `search-symbols.use-case.ts` |
-| Interfaces (ports) | PascalCase, no 'I' prefix | `SymbolRepository` |
-| Classes | PascalCase | `VsCodeSymbolRepository` |
-| Functions/Methods | camelCase, verb-first | `searchSymbols()`, `toDto()` |
-| Constants | UPPER_SNAKE_CASE | `MAX_SEARCH_RESULTS` |
-| Type Aliases | PascalCase | `SearchQuery`, `SymbolKind` |
-| Enums | PascalCase + PascalCase members | `SymbolKind.Function` |
-| Test files | `*.test.ts` | `search-symbols.use-case.test.ts` |
-| Port interfaces | `*.port.ts` | `symbol-repository.port.ts` |
+| Category           | Convention                      | Example                           |
+| ------------------ | ------------------------------- | --------------------------------- |
+| Files              | kebab-case                      | `search-symbols.use-case.ts`      |
+| Interfaces (ports) | PascalCase, no 'I' prefix       | `SymbolRepository`                |
+| Classes            | PascalCase                      | `VsCodeSymbolRepository`          |
+| Functions/Methods  | camelCase, verb-first           | `searchSymbols()`, `toDto()`      |
+| Constants          | UPPER_SNAKE_CASE                | `MAX_SEARCH_RESULTS`              |
+| Type Aliases       | PascalCase                      | `SearchQuery`, `SymbolKind`       |
+| Enums              | PascalCase + PascalCase members | `SymbolKind.Function`             |
+| Test files         | `*.test.ts`                     | `search-symbols.use-case.test.ts` |
+| Port interfaces    | `*.port.ts`                     | `symbol-repository.port.ts`       |
 
 ### 2.4 File Suffix Conventions
 
 File suffixes communicate the role and layer of each module at a glance.
 
-| Suffix | Layer | Purpose |
-|--------|-------|---------|
-| `.entity.ts` | Domain | Domain entities |
-| `.value-object.ts` | Domain | Value objects |
-| `.error.ts` | Domain | Domain-specific errors |
-| `.port.ts` | Application | Port interfaces (contracts) |
-| `.use-case.ts` | Application | Use case implementations |
-| `.dto.ts` | Application | Data transfer objects |
-| `.adapter.ts` | Infrastructure | Adapter implementations |
-| `.handler.ts` | Infrastructure | HTTP request handlers |
-| `.test.ts` | Test | Unit / integration tests |
+| Suffix             | Layer          | Purpose                     |
+| ------------------ | -------------- | --------------------------- |
+| `.entity.ts`       | Domain         | Domain entities             |
+| `.value-object.ts` | Domain         | Value objects               |
+| `.error.ts`        | Domain         | Domain-specific errors      |
+| `.port.ts`         | Application    | Port interfaces (contracts) |
+| `.use-case.ts`     | Application    | Use case implementations    |
+| `.dto.ts`          | Application    | Data transfer objects       |
+| `.adapter.ts`      | Infrastructure | Adapter implementations     |
+| `.handler.ts`      | Infrastructure | HTTP request handlers       |
+| `.test.ts`         | Test           | Unit / integration tests    |
 
 ---
 
@@ -293,24 +293,24 @@ Domain errors are typed and hierarchical. Each error carries a `kind` for progra
 ```typescript
 // domain/errors/app-error.ts
 type AppError =
-  | { kind: 'NOT_FOUND'; entity: string; id: string }
-  | { kind: 'VALIDATION'; field: string; message: string }
-  | { kind: 'TIMEOUT'; operation: string; ms: number }
-  | { kind: 'LSP_UNAVAILABLE'; language: string }
-  | { kind: 'INTERNAL'; message: string; cause?: unknown };
+  | { kind: "NOT_FOUND"; entity: string; id: string }
+  | { kind: "VALIDATION"; field: string; message: string }
+  | { kind: "TIMEOUT"; operation: string; ms: number }
+  | { kind: "LSP_UNAVAILABLE"; language: string }
+  | { kind: "INTERNAL"; message: string; cause?: unknown };
 ```
 
 ### 3.3 Error Translation at Boundaries
 
 Infrastructure adapters catch external exceptions and translate them into Result errors. The HTTP layer maps `AppError` kinds to HTTP status codes. No raw exceptions should cross layer boundaries.
 
-| AppError Kind | HTTP Status | CLI Exit Code |
-|---------------|-------------|---------------|
-| `VALIDATION` | 400 Bad Request | 1 |
-| `NOT_FOUND` | 404 Not Found | 1 |
-| `TIMEOUT` | 408 Request Timeout | 2 |
-| `LSP_UNAVAILABLE` | 503 Service Unavailable | 2 |
-| `INTERNAL` | 500 Internal Server Error | 2 |
+| AppError Kind     | HTTP Status               |
+| ----------------- | ------------------------- |
+| `VALIDATION`      | 400 Bad Request           |
+| `NOT_FOUND`       | 404 Not Found             |
+| `TIMEOUT`         | 408 Request Timeout       |
+| `LSP_UNAVAILABLE` | 503 Service Unavailable   |
+| `INTERNAL`        | 500 Internal Server Error |
 
 > **Rule:** Never throw in domain or application layers. Never catch and swallow errors. Never use try/catch as control flow. The only try/catch blocks should be in infrastructure adapters wrapping external API calls.
 
@@ -322,11 +322,11 @@ Infrastructure adapters catch external exceptions and translate them into Result
 
 Focus testing effort where it provides the most value.
 
-| Level | Scope | Target | Coverage |
-|-------|-------|--------|----------|
-| Unit | Single use case / entity | Domain + Application layers | Required for all use cases |
-| Integration | Adapter + external system | Infrastructure adapters | Required for each adapter |
-| E2E | Full CLI command | Entire system | Key workflows only |
+| Level       | Scope                     | Target                      | Coverage                   |
+| ----------- | ------------------------- | --------------------------- | -------------------------- |
+| Unit        | Single use case / entity  | Domain + Application layers | Required for all use cases |
+| Integration | Adapter + external system | Infrastructure adapters     | Required for each adapter  |
+| E2E         | Full HTTP request         | Entire system               | Key workflows only         |
 
 ### 4.2 Unit Testing Principles
 
@@ -382,11 +382,11 @@ Mocks are created from port interfaces. Each mock is a minimal implementation th
 ```typescript
 // test/helpers/mock-symbol-repository.ts
 export function createMockSymbolRepository(
-  overrides: Partial<SymbolRepository> = {}
+  overrides: Partial<SymbolRepository> = {},
 ): SymbolRepository {
   return {
     search: async () => Ok([]),
-    inspect: async () => Err({ kind: 'NOT_FOUND', entity: 'Symbol', id: '' }),
+    inspect: async () => Err({ kind: "NOT_FOUND", entity: "Symbol", id: "" }),
     ...overrides,
   };
 }
@@ -415,15 +415,15 @@ The domain layer models the core concepts of code navigation. Entities and value
 
 #### 5.1.1 Key Entities and Value Objects
 
-| Name | Type | Description |
-|------|------|-------------|
-| `SymbolInfo` | Entity | A code symbol with name, kind, location, and metadata. |
-| `SymbolDetail` | Entity | Extended symbol info including body, references, type hierarchy. |
-| `SearchQuery` | Value Object | Validated search parameters (query string, scope, filters). |
-| `SymbolLocation` | Value Object | File path + line + character. Immutable. |
-| `FileOutline` | Entity | Structured representation of a file's symbols and imports. |
-| `Diagnostic` | Entity | A compiler/linter diagnostic with severity, location, message. |
-| `WorkspaceInfo` | Entity | Project structure, language stats, entry points. |
+| Name             | Type         | Description                                                      |
+| ---------------- | ------------ | ---------------------------------------------------------------- |
+| `SymbolInfo`     | Entity       | A code symbol with name, kind, location, and metadata.           |
+| `SymbolDetail`   | Entity       | Extended symbol info including body, references, type hierarchy. |
+| `SearchQuery`    | Value Object | Validated search parameters (query string, scope, filters).      |
+| `SymbolLocation` | Value Object | File path + line + character. Immutable.                         |
+| `FileOutline`    | Entity       | Structured representation of a file's symbols and imports.       |
+| `Diagnostic`     | Entity       | A compiler/linter diagnostic with severity, location, message.   |
+| `WorkspaceInfo`  | Entity       | Project structure, language stats, entry points.                 |
 
 #### 5.1.2 Value Object Example
 
@@ -440,14 +440,22 @@ export class SearchQuery {
 
   static create(params: SearchQueryInput): Result<SearchQuery> {
     if (params.query.trim().length === 0) {
-      return Err({ kind: 'VALIDATION', field: 'query',
-        message: 'Query must not be empty' });
+      return Err({
+        kind: "VALIDATION",
+        field: "query",
+        message: "Query must not be empty",
+      });
     }
     const limit = Math.min(params.limit ?? 15, 100);
-    return Ok(new SearchQuery(
-      params.query.trim(), params.scope ?? 'workspace',
-      params.kinds ?? null, limit, params.includeBody ?? false
-    ));
+    return Ok(
+      new SearchQuery(
+        params.query.trim(),
+        params.scope ?? "workspace",
+        params.kinds ?? null,
+        limit,
+        params.includeBody ?? false,
+      ),
+    );
   }
 }
 ```
@@ -456,15 +464,15 @@ export class SearchQuery {
 
 The following terms are used consistently across code, documentation, and communication.
 
-| Term | Definition | NOT |
-|------|-----------|-----|
-| Symbol | A named code element (function, class, variable, type) | Token, identifier, node |
-| Inspect | Get detailed info about a specific symbol | Describe, analyze, detail |
-| Reference | A location where a symbol is used | Usage, occurrence, mention |
-| Outline | Structural summary of a file's symbols | Structure, tree, overview |
-| Diagnostic | An error/warning from the language server | Issue, problem, lint error |
-| Port | An interface defining a boundary contract | Interface, service, gateway |
-| Adapter | An implementation of a port for a specific technology | Provider, connector, plugin |
+| Term       | Definition                                             | NOT                         |
+| ---------- | ------------------------------------------------------ | --------------------------- |
+| Symbol     | A named code element (function, class, variable, type) | Token, identifier, node     |
+| Inspect    | Get detailed info about a specific symbol              | Describe, analyze, detail   |
+| Reference  | A location where a symbol is used                      | Usage, occurrence, mention  |
+| Outline    | Structural summary of a file's symbols                 | Structure, tree, overview   |
+| Diagnostic | An error/warning from the language server              | Issue, problem, lint error  |
+| Port       | An interface defining a boundary contract              | Interface, service, gateway |
+| Adapter    | An implementation of a port for a specific technology  | Provider, connector, plugin |
 
 ---
 
@@ -484,30 +492,30 @@ Commit messages follow [Conventional Commits](https://www.conventionalcommits.or
 
 #### 6.1.1 Commit Types
 
-| Type | Description | Example |
-|------|-------------|---------|
-| `feat` | New feature | `feat(search): add kind filter to symbol search` |
-| `fix` | Bug fix | `fix(http): handle empty query parameter` |
+| Type       | Description                             | Example                                              |
+| ---------- | --------------------------------------- | ---------------------------------------------------- |
+| `feat`     | New feature                             | `feat(search): add kind filter to symbol search`     |
+| `fix`      | Bug fix                                 | `fix(http): handle empty query parameter`            |
 | `refactor` | Code change that neither fixes nor adds | `refactor(domain): extract SearchQuery value object` |
-| `test` | Adding or updating tests | `test(inspect): add timeout error case` |
-| `docs` | Documentation only | `docs: update API spec with /diagnostics` |
-| `chore` | Build, CI, tooling | `chore: upgrade typescript to 5.5` |
-| `perf` | Performance improvement | `perf(search): cache workspace symbol results` |
+| `test`     | Adding or updating tests                | `test(inspect): add timeout error case`              |
+| `docs`     | Documentation only                      | `docs: update API spec with /diagnostics`            |
+| `chore`    | Build, CI, tooling                      | `chore: upgrade typescript to 5.5`                   |
+| `perf`     | Performance improvement                 | `perf(search): cache workspace symbol results`       |
 
 #### 6.1.2 Scope Values
 
-| Scope | Area |
-|-------|------|
-| `domain` | Domain layer entities, value objects, errors |
-| `search` | Search endpoint / use case |
-| `inspect` | Inspect endpoint / use case |
-| `refs` | References endpoint / use case |
-| `outline` | File outline endpoint / use case |
-| `diag` | Diagnostics endpoint / use case |
-| `overview` | Workspace overview endpoint / use case |
-| `http` | HTTP server infrastructure |
-| `cli` | CLI tool |
-| `vscode` | VS Code extension adapter |
+| Scope      | Area                                         |
+| ---------- | -------------------------------------------- |
+| `domain`   | Domain layer entities, value objects, errors |
+| `search`   | Search endpoint / use case                   |
+| `inspect`  | Inspect endpoint / use case                  |
+| `refs`     | References endpoint / use case               |
+| `outline`  | File outline endpoint / use case             |
+| `diag`     | Diagnostics endpoint / use case              |
+| `overview` | Workspace overview endpoint / use case       |
+| `http`     | HTTP server infrastructure                   |
+| `skill`    | Skill installer                              |
+| `vscode`   | VS Code extension adapter                    |
 
 ### 6.2 Single Responsibility Commits
 
@@ -531,13 +539,13 @@ Commit 4:
 
 ### 6.3 Branch Strategy
 
-| Branch | Purpose | Naming |
-|--------|---------|--------|
-| `main` | Production-ready code | `main` |
-| `develop` | Integration branch | `develop` |
-| Feature | New features | `feat/<scope>/<short-desc>` |
-| Fix | Bug fixes | `fix/<scope>/<short-desc>` |
-| Refactor | Structural improvements | `refactor/<scope>/<short-desc>` |
+| Branch    | Purpose                 | Naming                          |
+| --------- | ----------------------- | ------------------------------- |
+| `main`    | Production-ready code   | `main`                          |
+| `develop` | Integration branch      | `develop`                       |
+| Feature   | New features            | `feat/<scope>/<short-desc>`     |
+| Fix       | Bug fixes               | `fix/<scope>/<short-desc>`      |
+| Refactor  | Structural improvements | `refactor/<scope>/<short-desc>` |
 
 ### 6.4 Pull Request Requirements
 
@@ -556,24 +564,23 @@ Commit 4:
 
 Every new dependency must be evaluated against the following criteria before adoption.
 
-| Criterion | Requirement | Rationale |
-|-----------|-------------|-----------|
-| Maintenance | Active development within last 6 months | Abandoned libraries become security risks |
-| Type Safety | First-class TypeScript types (bundled or @types) | No any-typed libraries |
-| License | MIT, Apache-2.0, or BSD | Avoid copyleft in extension code |
-| Size | Prefer zero-dependency or minimal deps | Reduce supply chain risk and bundle size |
-| Alternatives | Must compare at least 2 alternatives | Avoid lock-in to suboptimal choices |
-| Security | No known CVEs at time of adoption | Check via `npm audit` and Snyk |
-| VS Code compat | Must work in VS Code extension host | No Node-only APIs unless CLI-specific |
+| Criterion      | Requirement                                      | Rationale                                 |
+| -------------- | ------------------------------------------------ | ----------------------------------------- |
+| Maintenance    | Active development within last 6 months          | Abandoned libraries become security risks |
+| Type Safety    | First-class TypeScript types (bundled or @types) | No any-typed libraries                    |
+| License        | MIT, Apache-2.0, or BSD                          | Avoid copyleft in extension code          |
+| Size           | Prefer zero-dependency or minimal deps           | Reduce supply chain risk and bundle size  |
+| Alternatives   | Must compare at least 2 alternatives             | Avoid lock-in to suboptimal choices       |
+| Security       | No known CVEs at time of adoption                | Check via `npm audit` and Snyk            |
+| VS Code compat | Must work in VS Code extension host              | No Node-only APIs in domain/application   |
 
 ### 7.2 Approved Libraries
 
-| Library | Purpose | Layer |
-|---------|---------|-------|
-| `zod` | Runtime type validation and schema definition | Application / Infrastructure |
-| `vitest` | Unit and integration testing | Test |
-| `esbuild` | Bundling extension and CLI | Build |
-| `commander` | CLI argument parsing | Infrastructure (CLI only) |
+| Library   | Purpose                                       | Layer                        |
+| --------- | --------------------------------------------- | ---------------------------- |
+| `zod`     | Runtime type validation and schema definition | Application / Infrastructure |
+| `vitest`  | Unit and integration testing                  | Test                         |
+| `esbuild` | Bundling extension                            | Build                        |
 
 ### 7.3 Adding New Dependencies
 
@@ -582,7 +589,7 @@ Every new dependency must be evaluated against the following criteria before ado
 3. List alternatives considered and reasons for selection.
 4. Require approval from at least one other contributor.
 
-> **Rule:** Do not add devDependencies to the extension runtime bundle. CLI and extension bundles are separate. Shared dependencies must be compatible with both environments.
+> **Rule:** Do not add devDependencies to the extension runtime bundle.
 
 ---
 
@@ -628,14 +635,14 @@ The CI pipeline runs on every push and pull request. All checks must pass before
 
 ### 9.1 Pipeline Stages
 
-| Stage | Command | Failure Blocks Merge |
-|-------|---------|---------------------|
-| Type Check | `tsc --noEmit` | Yes |
-| Lint | `eslint --max-warnings 0` | Yes |
-| Unit Tests | `vitest run` | Yes |
-| Integration Tests | `vitest run --project integration` | Yes |
-| Build | `esbuild` (extension + CLI) | Yes |
-| Bundle Size Check | Custom script, threshold TBD | Warning only |
+| Stage             | Command                            | Failure Blocks Merge |
+| ----------------- | ---------------------------------- | -------------------- |
+| Type Check        | `tsc --noEmit`                     | Yes                  |
+| Lint              | `eslint --max-warnings 0`          | Yes                  |
+| Unit Tests        | `vitest run`                       | Yes                  |
+| Integration Tests | `vitest run --project integration` | Yes                  |
+| Build             | `esbuild` (extension)              | Yes                  |
+| Bundle Size Check | Custom script, threshold TBD       | Warning only         |
 
 ### 9.2 ESLint Configuration Highlights
 

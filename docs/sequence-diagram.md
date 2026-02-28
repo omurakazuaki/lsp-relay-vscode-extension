@@ -13,7 +13,7 @@ sequenceDiagram
     participant Handler as HTTP Handlers<br/>(×6)
     participant Server as LspRelayHttpServer
     participant PD as port-discovery.ts
-    participant FS as File System<br/>(tmpdir)
+    participant FS as File System<br/>(~/.semcode/)
 
     VSCode->>Ext: activate(context)
     Note over Ext: workspaceRoot = workspaceFolders[0]
@@ -46,23 +46,21 @@ sequenceDiagram
     Ext->>Server: start()
     Server-->>Ext: port (ephemeral)
     Ext->>PD: writePortFile(workspaceRoot, port)
-    PD->>FS: write ${tmpdir}/lsp-relay-${MD5(root)}.json
+    PD->>FS: write ~/.semcode/ports/<workspace-path>/port.json
     Note over FS: {port, pid, workspaceFolders, timestamp}
 
     Ext->>VSCode: registerCommand("lsp-relay.showStatus")
-    Ext->>VSCode: registerCommand("lsp-relay.installCli")
     Ext->>VSCode: registerCommand("lsp-relay.installSkill")
 ```
 
 ## 2. APIリクエストの処理フロー（例: /search）
 
-LLMエージェントまたはCLIからのHTTPリクエストが処理される典型的な流れ。
+LLMエージェントからのHTTPリクエスト（curl）が処理される典型的な流れ。
 
 ```mermaid
 sequenceDiagram
-    actor Agent as LLM Agent / CLI
-    participant CLI as semcode CLI
-    participant PD as port-discovery
+    actor Agent as LLM Agent
+    participant PD as ~/.semcode/ports/
     participant Server as HTTP Server<br/>(127.0.0.1)
     participant Handler as SearchHandler
     participant Zod as Zod Schema
@@ -72,11 +70,10 @@ sequenceDiagram
     participant Adapter as VscodeSymbolSearcher<br/>Adapter
     participant LSP as VS Code LSP<br/>(Language Server)
 
-    Agent->>CLI: semcode search "MyClass"
-    CLI->>PD: readPortFile(cwd)
-    PD-->>CLI: {port: 54321}
+    Agent->>PD: cat ~/.semcode/ports$(pwd)/port.json
+    PD-->>Agent: {port: 54321}
 
-    CLI->>Server: POST /search<br/>{"query": "MyClass"}
+    Agent->>Server: curl POST /search<br/>{"query": "MyClass"}
 
     Server->>Server: dispatch(req, res)
     Server->>Handler: handle(body)
@@ -123,8 +120,7 @@ sequenceDiagram
         Handler-->>Server: {status: 200, body: {results, ...}}
     end
 
-    Server-->>CLI: HTTP 200 JSON
-    CLI-->>Agent: JSON / Pretty出力
+    Server-->>Agent: HTTP 200 JSON
 ```
 
 ## 3. エラーハンドリングフロー
@@ -133,7 +129,7 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant Client as CLI / Agent
+    participant Client as LLM Agent
     participant Server as HTTP Server
     participant Handler as Handler
     participant UC as UseCase
@@ -156,47 +152,51 @@ sequenceDiagram
     Server-->>Client: HTTP 404 JSON
 ```
 
-## 4. CLI インストールとSkillインストール
+## 4. Skillインストール
 
-CLIとスキルファイルのインストールフロー。
+スキルファイルのインストールフロー。SHA-256ハッシュで更新チェックを行う。
 
 ```mermaid
 sequenceDiagram
     actor User as ユーザー
     participant VSCode as VS Code
     participant Ext as extension.ts
-    participant CLI_Inst as cli-installer.ts
     participant Skill_Inst as skill-installer.ts
     participant FS as File System
 
-    User->>VSCode: Command: "LSP Relay: Install CLI"
-    VSCode->>Ext: command handler
-    Ext->>CLI_Inst: installCli(extensionPath)
-    CLI_Inst->>FS: mkdir ~/.local/bin/
-    CLI_Inst->>FS: symlink ~/.local/bin/semcode<br/>→ {extensionPath}/out/cli.js
-    CLI_Inst->>FS: chmod +x
-    CLI_Inst-->>Ext: null (成功)
-    Ext->>VSCode: showInformationMessage("CLI installed")
-
     User->>VSCode: Command: "LSP Relay: Install Skill"
     VSCode->>Ext: command handler
-    Ext->>Skill_Inst: isCliInstalled()
-    Skill_Inst->>FS: exists? ~/.local/bin/semcode
-    FS-->>Skill_Inst: true
 
     Ext->>Skill_Inst: installSkill({workspaceRoot, platforms})
 
     rect rgb(240, 248, 255)
-        Note over Skill_Inst,FS: Platform: claude
-        Skill_Inst->>FS: mkdir {root}/.claude/skills/semantic-search/
-        Skill_Inst->>FS: write SKILL.md
-        Skill_Inst->>FS: symlink scripts/semcode → ~/.local/bin/semcode
+        Note over Skill_Inst,FS: SHA-256 Hash Check
+        Skill_Inst->>FS: readFile(SKILL.md) — bundled version
+        Skill_Inst->>Skill_Inst: sha256(bundledContent)
+        Skill_Inst->>FS: readFile(existing SKILL.md)
+        alt 未インストール
+            Note over Skill_Inst: fresh install
+        else ハッシュ一致
+            Note over Skill_Inst: skip (already up to date)
+        else ハッシュ不一致
+            Skill_Inst->>Ext: onConflict(skillMdPath)
+            Ext->>VSCode: showWarningMessage("Overwrite?")
+            VSCode-->>Ext: user choice
+        end
     end
 
     rect rgb(248, 255, 240)
+        Note over Skill_Inst,FS: Platform: claude
+        Skill_Inst->>FS: mkdir {root}/.claude/skills/semantic-search/
+        Skill_Inst->>FS: write SKILL.md
+        Skill_Inst->>FS: ensure .gitignore (port.json)
+    end
+
+    rect rgb(255, 248, 240)
         Note over Skill_Inst,FS: Platform: copilot
         Skill_Inst->>FS: mkdir {root}/.github/skills/semantic-search/
         Skill_Inst->>FS: write SKILL.md
+        Skill_Inst->>FS: ensure .gitignore (port.json)
     end
 
     Skill_Inst-->>Ext: {installed: [...], skipped: [], errors: []}
@@ -207,7 +207,7 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant CLI as semcode CLI<br/>(Commander.js)
+    participant Agent as LLM Agent<br/>(curl)
     participant HTTP as HTTP Server<br/>(Node http)
     participant H as Handlers<br/>(Zod validation)
     participant UC as Use Cases<br/>(Business Logic)
@@ -215,48 +215,48 @@ sequenceDiagram
     participant A as VS Code Adapters
     participant VS as VS Code API
 
-    Note over CLI,VS: POST /search
-    CLI->>HTTP: search <query>
+    Note over Agent,VS: POST /search
+    Agent->>HTTP: curl POST /search
     HTTP->>H: SearchHandler
     H->>UC: SearchSymbolsUseCase
     UC->>P: SymbolSearcher.search()
     P->>A: VscodeSymbolSearcherAdapter
     A->>VS: executeWorkspaceSymbolProvider
 
-    Note over CLI,VS: POST /inspect
-    CLI->>HTTP: inspect <file:line>
+    Note over Agent,VS: POST /inspect
+    Agent->>HTTP: curl POST /inspect
     HTTP->>H: InspectHandler
     H->>UC: InspectSymbolUseCase
     UC->>P: SymbolInspector.inspect()
     P->>A: VscodeSymbolInspectorAdapter
     A->>VS: executeHoverProvider<br/>executeDocumentSymbolProvider<br/>executeReferenceProvider
 
-    Note over CLI,VS: POST /references
-    CLI->>HTTP: refs <file:line>
+    Note over Agent,VS: POST /references
+    Agent->>HTTP: curl POST /references
     HTTP->>H: ReferencesHandler
     H->>UC: FindReferencesUseCase
     UC->>P: ReferenceProvider.findReferences()
     P->>A: VscodeReferenceProviderAdapter
     A->>VS: executeReferenceProvider
 
-    Note over CLI,VS: POST /file_outline
-    CLI->>HTTP: outline <file>
+    Note over Agent,VS: POST /file_outline
+    Agent->>HTTP: curl POST /file_outline
     HTTP->>H: FileOutlineHandler
     H->>UC: GetFileOutlineUseCase
     UC->>P: FileOutlineProvider.getOutline()
     P->>A: VscodeFileOutlineProviderAdapter
     A->>VS: executeDocumentSymbolProvider
 
-    Note over CLI,VS: POST /diagnostics
-    CLI->>HTTP: diagnostics [file]
+    Note over Agent,VS: POST /diagnostics
+    Agent->>HTTP: curl POST /diagnostics
     HTTP->>H: DiagnosticsHandler
     H->>UC: GetDiagnosticsUseCase
     UC->>P: DiagnosticsProvider.getDiagnostics()
     P->>A: VscodeDiagnosticsProviderAdapter
     A->>VS: languages.getDiagnostics()
 
-    Note over CLI,VS: POST /workspace_overview
-    CLI->>HTTP: overview
+    Note over Agent,VS: POST /workspace_overview
+    Agent->>HTTP: curl POST /workspace_overview
     HTTP->>H: WorkspaceOverviewHandler
     H->>UC: GetWorkspaceOverviewUseCase
     UC->>P: WorkspaceOverviewProvider.getOverview()
@@ -284,5 +284,5 @@ sequenceDiagram
     I->>S: imports Result, constants
 
     Note over D,I: 依存の方向は常に外側→内側<br/>(Clean Architecture)
-    Note over I: 外部ライブラリ:<br/>- Node.js http (HTTPサーバー)<br/>- vscode API (LSP連携)<br/>- commander (CLI)<br/>- zod (バリデーション)
+    Note over I: 外部ライブラリ:<br/>- Node.js http (HTTPサーバー)<br/>- vscode API (LSP連携)<br/>- zod (バリデーション)
 ```

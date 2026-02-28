@@ -8,7 +8,7 @@
 
 This document specifies the API for the VS Code Semantic Code Search system. The system enables LLM agents to perform semantic code navigation and search by leveraging the language server already running inside VS Code, eliminating the need to start a separate language server process and avoiding redundant indexing.
 
-The system consists of two components: a VS Code extension that exposes an HTTP server on localhost, and a CLI tool that communicates with this server. The CLI is designed to be invoked by LLM agents as a tool/function call.
+The system consists of a VS Code extension that exposes an HTTP server on localhost. LLM agents interact with it directly via HTTP (using `curl` or HTTP hooks), guided by a SKILL.md file installed into the workspace.
 
 ### 1.1 Design Principles
 
@@ -22,12 +22,12 @@ The system consists of two components: a VS Code extension that exposes an HTTP 
 
 ## 2. Architecture
 
-The system reuses the existing VS Code language server infrastructure via the `vscode.executeXxxProvider` commands. The extension acts as a bridge, translating HTTP requests from the CLI into VS Code API calls and returning structured JSON.
+The system reuses the existing VS Code language server infrastructure via the `vscode.executeXxxProvider` commands. The extension acts as a bridge, translating HTTP requests into VS Code API calls and returning structured JSON.
 
 ### 2.1 Communication Flow
 
 ```
-CLI Tool ──HTTP POST──> VS Code Extension (localhost:PORT)
+LLM Agent ──curl/HTTP──> VS Code Extension (localhost:PORT)
                               │
                               ├── vscode.executeWorkspaceSymbolProvider
                               ├── vscode.executeDefinitionProvider
@@ -36,15 +36,16 @@ CLI Tool ──HTTP POST──> VS Code Extension (localhost:PORT)
                               ├── vscode.executeDocumentSymbolProvider
                               └── vscode.languages.getDiagnostics
                               │
-CLI Tool <──JSON────── VS Code Extension
+LLM Agent <──JSON────── VS Code Extension
 ```
 
 ### 2.2 Port Discovery
 
-The extension writes connection information to a JSON file on startup. The CLI reads this file to determine the port. Files are stored per workspace to support multiple VS Code windows.
+The extension writes connection information to a JSON file on startup. Files are stored per workspace under the user's home directory, using the workspace absolute path to avoid hash computation (no platform-specific tools like `md5sum` required).
 
 ```
-Location: $TMPDIR/vscode-semantic-search-<workspace_hash>.json
+Location: ~/.semcode/ports/<workspace-absolute-path>/port.json
+Example:  ~/.semcode/ports/home/user/project/port.json
 ```
 
 ```json
@@ -56,112 +57,40 @@ Location: $TMPDIR/vscode-semantic-search-<workspace_hash>.json
 }
 ```
 
+LLM agents read the port file to discover the server:
+
+```bash
+PORT=$(cat "$HOME/.semcode/ports$(pwd)/port.json" | grep -o '"port":[0-9]*' | grep -o '[0-9]*')
+curl -sf "http://127.0.0.1:${PORT}/health"
+```
+
 > **Security:** The HTTP server binds to `127.0.0.1` only. No authentication is required since access is limited to the local machine.
 
-### 2.3 CLI Installation
-
-The CLI (`semcode`) is bundled inside the extension's `out/cli.js`. To make it available as a system command, the extension provides a VS Code command that creates a symbolic link.
-
-**Installation command:** `LSP Relay: Install CLI`
-
-This command creates a symlink at `~/.local/bin/semcode` → `<extensionPath>/out/cli.js`. The user must ensure `~/.local/bin` is in their `PATH`.
-
-#### Symlink auto-repair on extension update
-
-VS Code installs extensions into versioned directories (e.g., `~/.vscode/extensions/local.lsp-relay-0.1.0/`). When the extension is updated, the old directory is removed and a new one is created, which **breaks** existing symlinks.
-
-To handle this, the extension checks on every activation whether a symlink at the target path already exists. If it does but points to an outdated path (i.e., the old extension version), the symlink is automatically updated to point to the new `cli.js` location. This makes CLI updates transparent to the user — after the first manual install, subsequent extension updates are reflected in the CLI automatically.
-
-```
-Activation flow:
-  1. Check if ~/.local/bin/semcode exists
-  2. If it is a symlink pointing to a different extensionPath → update it
-  3. If it does not exist → do nothing (user has not opted in)
-```
-
-> **Note:** The symlink points to the file, not a copy. No separate CLI update step is needed after the initial install.
-
-### 2.4 LLM Skill Installation
+### 2.3 LLM Skill Installation
 
 The extension can install **skill definitions** into the current workspace so that LLM agents (Claude Code, GitHub Copilot, etc.) automatically discover and use SemCode for code navigation.
 
-**Installation command:** `LSP Relay: Install SKILL`
+**Installation command:** `LSP Relay: Install Skill`
 
 When executed, the command asks the user to select a target LLM platform and creates the following files in the workspace root:
 
 #### Target directories
 
-| Platform       | Skill directory                           | Scripts directory                                |
-| -------------- | ----------------------------------------- | ------------------------------------------------ |
-| Claude Code    | `.claude/skills/semantic-search/SKILL.md` | `.claude/skills/semantic-search/scripts/semcode` |
-| GitHub Copilot | `.github/skills/semantic-search/SKILL.md` | `.github/skills/semantic-search/scripts/semcode` |
+| Platform       | Skill directory                           |
+| -------------- | ----------------------------------------- |
+| Claude Code    | `.claude/skills/semantic-search/SKILL.md` |
+| GitHub Copilot | `.github/skills/semantic-search/SKILL.md` |
 
-- **`SKILL.md`** — A skill definition file with YAML frontmatter (`name`, `description`) followed by usage instructions for SemCode commands.
-- **`scripts/semcode`** — A symbolic link to the installed `semcode` CLI (`~/.local/bin/semcode`). This allows the LLM to invoke `semcode` relative to the skill directory.
+- **`SKILL.md`** — A skill definition file with YAML frontmatter (`name`, `description`) followed by usage instructions including port discovery and `curl`-based API examples.
+- **`.gitignore`** — Excludes `port.json` (written dynamically by the extension at runtime).
 
-#### SKILL.md template
+#### Update behavior
 
-````markdown
----
-name: semantic-search
-description: >-
-  Use when you need to search for symbols, inspect code details, find references,
-  or navigate the codebase using VS Code's language server capabilities.
-  Prefer this over grep or file reading for type-aware code navigation.
----
+The installer uses SHA-256 hash comparison to detect whether an existing SKILL.md matches the bundled version:
 
-# SemCode — Semantic Code Search
-
-SemCode leverages the VS Code language server to provide type-aware code
-navigation. The `semcode` CLI is available at `scripts/semcode`.
-
-## When to Use
-
-- Finding function, class, or type definitions by name or description
-- Inspecting detailed type signatures, documentation, and source code
-- Finding all references and usages of a symbol across the workspace
-- Understanding file structure (imports, exports, classes, functions)
-- Checking for compilation errors and warnings
-- Getting a high-level overview of the project structure
-
-## Commands
-
-```bash
-# Search for symbols by name or description
-semcode search "<query>" [--kinds function,class] [--limit 10]
-
-# Inspect a symbol at a specific location
-semcode inspect "<file>:<line>" [--include signature,doc,body]
-
-# Find all references to a symbol
-semcode refs "<file>:<line>" [--context-lines 2] [--limit 30]
-
-# Get file outline (imports, exports, symbols)
-semcode outline "<file>" [--depth 2]
-
-# Check diagnostics (errors, warnings)
-semcode diagnostics [<file>] [--severity error,warning]
-
-# Get workspace overview
-semcode overview [--depth 2]
-```
-
-## Recommended Workflow
-
-1. `semcode overview` — Understand project structure
-2. `semcode search "<query>"` — Find relevant symbols
-3. `semcode inspect "<file>:<line>"` — Get full details
-4. `semcode refs "<file>:<line>"` — Understand usage patterns
-5. `semcode diagnostics` — Verify correctness after changes
-````
-
-#### Prerequisite
-
-The `semcode` CLI must be installed first (Section 2.3). If it is not installed when `Install Skills` is executed, the command will prompt the user to install it first.
-
-#### Overwrite behavior
-
-If the skill files already exist, the command asks for confirmation before overwriting. This prevents accidental loss of user customizations to the SKILL.md.
+- **Hashes match** → Already up to date, skip.
+- **Hashes differ** → SKILL.md has been modified or a new version is available. The user is asked whether to overwrite.
+- **File does not exist** → Fresh install, no confirmation needed.
 
 ---
 
@@ -563,38 +492,11 @@ Provides a high-level summary of the workspace: directory structure, languages, 
 
 ---
 
-## 4. CLI Interface
+## 4. LLM Tool Definitions
 
-The CLI provides a command-line wrapper around the HTTP API, designed for invocation by LLM agents via tool/function definitions. All commands output JSON to stdout.
+The following tool definitions are designed for use with OpenAI Function Calling, Anthropic Tool Use, or MCP (Model Context Protocol). Each tool maps directly to an API endpoint.
 
-### 4.1 Commands
-
-| Command                         | Description                                                                               |
-| ------------------------------- | ----------------------------------------------------------------------------------------- |
-| `semcode search <query>`        | Search for symbols. Flags: `--kinds`, `--scope`, `--path`, `--limit`, `--include-body`    |
-| `semcode inspect <file>:<line>` | Get detailed symbol info. Flag: `--include <fields>`                                      |
-| `semcode refs <file>:<line>`    | Find all references. Flags: `--context-lines`, `--limit`                                  |
-| `semcode outline <file>`        | Get file structure. Flag: `--depth`                                                       |
-| `semcode diagnostics [file]`    | Get errors/warnings. Flag: `--severity`                                                   |
-| `semcode overview`              | Get workspace summary. Flag: `--depth`                                                    |
-| `semcode status`                | Check if VS Code extension is running and reachable.                                      |
-| `semcode install-skills`        | Install LLM skill definitions into the workspace. Flag: `--target <claude\|copilot\|all>` |
-
-### 4.2 Global Flags
-
-| Flag                    | Description                                                            |
-| ----------------------- | ---------------------------------------------------------------------- |
-| `--workspace <path>`    | Explicitly specify workspace root (auto-detected from cwd by default). |
-| `--format json\|pretty` | Output format. Default: `json` (compact, for LLM consumption).         |
-| `--timeout <ms>`        | Request timeout in milliseconds. Default: `10000`.                     |
-
----
-
-## 5. LLM Tool Definitions
-
-The following tool definitions are designed for use with OpenAI Function Calling, Anthropic Tool Use, or MCP (Model Context Protocol). Each tool maps directly to a CLI command and an API endpoint.
-
-### 5.1 Tool Mapping
+### 4.1 Tool Mapping
 
 | Tool Name            | Endpoint                   | When to Use                                           |
 | -------------------- | -------------------------- | ----------------------------------------------------- |
@@ -605,7 +507,7 @@ The following tool definitions are designed for use with OpenAI Function Calling
 | `code_diagnostics`   | `POST /diagnostics`        | Check for errors after changes.                       |
 | `workspace_overview` | `POST /workspace_overview` | Orient within the project at task start.              |
 
-### 5.2 Tool Definitions (JSON Schema)
+### 4.2 Tool Definitions (JSON Schema)
 
 ```json
 [
@@ -735,7 +637,7 @@ The following tool definitions are designed for use with OpenAI Function Calling
 ]
 ```
 
-### 5.3 Recommended Usage Pattern
+### 4.3 Recommended Usage Pattern
 
 LLM agents should follow this general workflow when working with the codebase:
 
@@ -749,7 +651,7 @@ LLM agents should follow this general workflow when working with the codebase:
 
 ---
 
-## 6. Error Handling
+## 5. Error Handling
 
 All endpoints return standard HTTP status codes. Error responses include a JSON body with an `error` field containing a human-readable message.
 
@@ -762,11 +664,9 @@ All endpoints return standard HTTP status codes. Error responses include a JSON 
 | `500`  | Internal Error | Unexpected error in the extension.                               |
 | `503`  | Unavailable    | Language server is not ready (still indexing or not installed).  |
 
-The CLI tool translates these into appropriate exit codes: `0` for success, `1` for client errors, `2` for server/connection errors.
-
 ---
 
-## 7. Security Considerations
+## 6. Security Considerations
 
 - **Localhost only:** The HTTP server binds exclusively to `127.0.0.1`. It is not accessible from external networks.
 - **No authentication:** Since access is restricted to the local machine, no authentication mechanism is required. If needed in the future, a shared secret via environment variable can be added.
@@ -775,16 +675,16 @@ The CLI tool translates these into appropriate exit codes: `0` for success, `1` 
 
 ---
 
-## 8. Limitations and Future Work
+## 7. Limitations and Future Work
 
-### 8.1 Current Limitations
+### 7.1 Current Limitations
 
 - The API depends on VS Code being open with the target workspace loaded.
 - Language server quality varies by language. Features like hover information and workspace symbols depend on the installed language extension.
 - Natural language search relies on the workspace symbol provider, which performs fuzzy string matching rather than true semantic understanding.
 - Multiple VS Code windows require separate port discovery per workspace.
 
-### 8.2 Future Enhancements
+### 7.2 Future Enhancements
 
 - **Embedding-based search:** Integrate vector embeddings for true semantic code search beyond symbol name matching.
 - **Call graph:** Add a `/call_graph` endpoint to trace function call chains.

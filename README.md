@@ -33,31 +33,41 @@ The extension starts a local HTTP server on `127.0.0.1` that exposes 6 endpoints
 | `POST /diagnostics`        | Get language server errors and warnings        |
 | `POST /workspace_overview` | Get project structure and language statistics  |
 
-### CLI Tool (`semcode`)
-
-A command-line interface for interacting with the API, designed to be invoked by LLM agents as a tool/function call:
+No CLI or Node.js installation required — agents use `curl` directly:
 
 ```bash
-# Search for symbols
-semcode search "authentication middleware" --kinds function,class --limit 10
+# Discover the port
+PORT=$(cat "$HOME/.semcode/ports$(pwd)/port.json" | grep -o '"port":[0-9]*' | grep -o '[0-9]*')
 
-# Inspect a symbol at a specific location
-semcode inspect "src/auth.ts:42" --include signature,doc,body
+# Search for symbols
+curl -s "http://127.0.0.1:${PORT}/search" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "authentication middleware", "kinds": ["function", "class"], "limit": 10}'
+
+# Inspect a symbol
+curl -s "http://127.0.0.1:${PORT}/inspect" \
+  -H "Content-Type: application/json" \
+  -d '{"file": "src/auth.ts", "line": 42, "include": ["signature", "doc", "body"]}'
 
 # Find all references
-semcode refs "src/auth.ts:42" --context-lines 2 --limit 30
+curl -s "http://127.0.0.1:${PORT}/references" \
+  -H "Content-Type: application/json" \
+  -d '{"file": "src/auth.ts", "line": 42, "contextLines": 2}'
 
 # Get file outline
-semcode outline "src/auth.ts" --depth 2
+curl -s "http://127.0.0.1:${PORT}/file_outline" \
+  -H "Content-Type: application/json" \
+  -d '{"file": "src/auth.ts"}'
 
 # Check diagnostics
-semcode diagnostics src/auth.ts --severity error,warning
+curl -s "http://127.0.0.1:${PORT}/diagnostics" \
+  -H "Content-Type: application/json" \
+  -d '{"file": "src/auth.ts", "severity": ["error", "warning"]}'
 
 # Get workspace overview
-semcode overview --depth 2
-
-# Check server status
-semcode status
+curl -s "http://127.0.0.1:${PORT}/workspace_overview" \
+  -H "Content-Type: application/json" \
+  -d '{"depth": 2}'
 ```
 
 ### LLM Skill Installation
@@ -67,6 +77,20 @@ Install skill definitions into your workspace so that LLM agents automatically d
 - **Claude Code** — installs to `.claude/skills/semantic-search/`
 - **GitHub Copilot** — installs to `.github/skills/semantic-search/`
 
+The skill file (SKILL.md) contains complete API documentation with port discovery instructions, so agents can use `curl` autonomously. Updates are detected via SHA-256 hash comparison.
+
+### Port Discovery
+
+The extension writes connection info to `~/.semcode/ports/<workspace-path>/port.json`:
+
+```
+~/.semcode/ports/home/user/my-project/port.json
+```
+
+Content: `{ "port": 54321, "pid": 12345, "workspaceFolders": [...], "timestamp": ... }`
+
+This avoids platform-specific hashing (no `md5sum` vs `md5` differences).
+
 ## Getting Started
 
 ### 1. Install the Extension
@@ -74,7 +98,7 @@ Install skill definitions into your workspace so that LLM agents automatically d
 ```bash
 # Build and install from source
 npm install
-npm run install:ext
+npm run build
 ```
 
 Or install the `.vsix` file directly:
@@ -84,19 +108,7 @@ npm run package
 code --install-extension lsp-relay.vsix
 ```
 
-### 2. Install the CLI
-
-Run the command palette command:
-
-```
-LSP Relay: Install CLI
-```
-
-This creates a symlink at `~/.local/bin/semcode`. Make sure `~/.local/bin` is in your `PATH`.
-
-> The symlink is automatically updated when the extension is updated — no manual re-installation needed.
-
-### 3. Install LLM Skills (Optional)
+### 2. Install LLM Skills
 
 Run the command palette command:
 
@@ -109,20 +121,19 @@ Select your target platform (Claude Code or GitHub Copilot) and the skill files 
 ## Recommended Workflow for LLM Agents
 
 ```
-1. semcode overview        → Understand project structure
-2. semcode search "<query>" → Find relevant symbols
-3. semcode inspect "file:line" → Get full details (signature, docs, source)
-4. semcode refs "file:line"    → Understand usage patterns
-5. semcode diagnostics      → Verify correctness after changes
+1. curl POST /workspace_overview  → Understand project structure
+2. curl POST /search              → Find relevant symbols
+3. curl POST /inspect             → Get full details (signature, docs, source)
+4. curl POST /references          → Understand usage patterns
+5. curl POST /diagnostics         → Verify correctness after changes
 ```
 
 ## Commands
 
-| Command                    | Description                             |
-| -------------------------- | --------------------------------------- |
-| `LSP Relay: Show Status`   | Show HTTP server status and port        |
-| `LSP Relay: Install CLI`   | Install `semcode` CLI to `~/.local/bin` |
-| `LSP Relay: Install Skill` | Install LLM skill files to workspace    |
+| Command                    | Description                          |
+| -------------------------- | ------------------------------------ |
+| `LSP Relay: Show Status`   | Show HTTP server status and port     |
+| `LSP Relay: Install Skill` | Install LLM skill files to workspace |
 
 ## Security
 

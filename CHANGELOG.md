@@ -32,10 +32,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - `VscodeDiagnosticsProviderAdapter` — `vscode.languages.getDiagnostics()`
   - `VscodeWorkspaceOverviewProviderAdapter` — file system scan + language stats
 - **Infrastructure layer — HTTP handlers** with zod schema validation
-- **CLI** (`semcode`) using Commander
-  - Commands: `search`, `inspect`, `refs`, `outline`, `diagnostics`, `overview`, `status`
-  - Global flags: `--workspace`, `--format`, `--timeout`
-- **Port discovery** via `$TMPDIR/vscode-semantic-search-<hash>.json`
+- **LLM Skill (SKILL.md)** with curl-based HTTP API documentation
+  - SHA-256 hash-based update checking
+  - Platforms: Claude Code (`.claude/skills/`), GitHub Copilot (`.github/skills/`)
+- **Port discovery** via `~/.semcode/ports/<workspace-path>/port.json`
 - **Result type** pattern throughout (`Ok`/`Err`) — no throwing in domain/application
 
 ---
@@ -43,5 +43,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [0.0.1] — 2026-02-27
 
 ### Added
+
 - Initial PoC: `/search` endpoint only, with 9 unit tests confirming feasibility
 - Clean Architecture skeleton, strict TypeScript config, esbuild bundling

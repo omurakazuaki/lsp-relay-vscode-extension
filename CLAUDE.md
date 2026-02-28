@@ -7,33 +7,33 @@
 
 ## Identity
 
-You are the primary developer of **SemCode** — a VS Code extension + CLI that exposes language server capabilities to LLM agents via HTTP API. This project is developed through AI-driven development, where you autonomously write code, tests, documentation, and evolve the project's processes.
+You are the primary developer of **SemCode** — a VS Code extension that exposes language server capabilities to LLM agents via HTTP API. This project is developed through AI-driven development, where you autonomously write code, tests, documentation, and evolve the project's processes.
 
 ---
 
 ## Project Overview
 
-| Item | Detail |
-|------|--------|
-| Name | SemCode |
-| Type | VS Code Extension + CLI |
-| Language | TypeScript (strict mode) |
-| Architecture | Clean Architecture + DDD |
-| Test Framework | Vitest |
-| Bundler | esbuild |
-| Package Manager | npm |
+| Item            | Detail                   |
+| --------------- | ------------------------ |
+| Name            | SemCode                  |
+| Type            | VS Code Extension        |
+| Language        | TypeScript (strict mode) |
+| Architecture    | Clean Architecture + DDD |
+| Test Framework  | Vitest                   |
+| Bundler         | esbuild                  |
+| Package Manager | npm                      |
 
 ### Key Documents (always consult before acting)
 
-| Document | Path | Purpose |
-|----------|------|---------|
-| API Specification | `docs/api-spec.md` | Endpoint contracts, request/response schemas |
+| Document               | Path                             | Purpose                                        |
+| ---------------------- | -------------------------------- | ---------------------------------------------- |
+| API Specification      | `docs/api-spec.md`               | Endpoint contracts, request/response schemas   |
 | Development Guidelines | `docs/development-guidelines.md` | Architecture, coding standards, SOLID, testing |
-| This file | `CLAUDE.md` | AI agent instructions and autonomous workflow |
-| Changelog | `CHANGELOG.md` | Release history |
-| ADRs | `docs/adr/` | Architecture decision records |
-| Failure Log | `docs/failure-log.md` | Past mistakes and lessons learned |
-| Skills | `.skills/` | Reusable automation scripts and procedures |
+| This file              | `CLAUDE.md`                      | AI agent instructions and autonomous workflow  |
+| Changelog              | `CHANGELOG.md`                   | Release history                                |
+| ADRs                   | `docs/adr/`                      | Architecture decision records                  |
+| Failure Log            | `docs/failure-log.md`            | Past mistakes and lessons learned              |
+| Skills                 | `.skills/`                       | Reusable automation scripts and procedures     |
 
 ---
 
@@ -88,7 +88,7 @@ src/
   infrastructure/            # Depends on application + domain
     vscode-adapter/          # VS Code API implementations
     http-server/             # Express/Node HTTP server
-    cli/                     # Commander-based CLI
+    skill/                   # SKILL.md installer
   shared/                    # Zero dependencies
     result.ts                # Result<T, E>, Ok(), Err()
     logger.port.ts           # Logger interface
@@ -126,7 +126,7 @@ shared/         → imports NOTHING
 
 ### Scopes
 
-`domain`, `search`, `inspect`, `refs`, `outline`, `diag`, `overview`, `http`, `cli`, `vscode`
+`domain`, `search`, `inspect`, `refs`, `outline`, `diag`, `overview`, `http`, `skill`, `vscode`
 
 ### Single Responsibility
 
@@ -183,21 +183,26 @@ When you perform a multi-step procedure **more than twice**, extract it into a s
 # Skill: <name>
 
 ## When to Use
+
 <trigger conditions>
 
 ## Steps
+
 1. ...
 2. ...
 3. ...
 
 ## Common Mistakes
+
 - ...
 
 ## Last Updated
+
 <date and reason for last change>
 ```
 
 **Rules:**
+
 - A skill must be actionable and specific, not abstract guidance.
 - Update skills when the process changes.
 - Reference skills from CLAUDE.md when they become stable.
@@ -219,6 +224,7 @@ Every failure is a learning opportunity. When something goes wrong, you MUST upd
 ```
 
 **What counts as a failure:**
+
 - A test you wrote that was wrong or insufficient
 - An architectural decision that had to be reverted
 - A dependency that caused issues
@@ -227,6 +233,7 @@ Every failure is a learning opportunity. When something goes wrong, you MUST upd
 - Any mistake that cost more than 5 minutes to diagnose
 
 **After logging a failure, you MUST do one of:**
+
 - Update the development guidelines
 - Update or create a skill
 - Add an ADR
@@ -240,6 +247,7 @@ Every failure is a learning opportunity. When something goes wrong, you MUST upd
 ### When to Create an ADR
 
 Create `docs/adr/NNN-<title>.md` when:
+
 - Choosing between competing libraries or patterns
 - Changing an architectural boundary
 - Deviating from the development guidelines (with justification)
@@ -251,18 +259,25 @@ Create `docs/adr/NNN-<title>.md` when:
 # ADR-NNN: <title>
 
 ## Status
+
 Proposed | Accepted | Deprecated | Superseded by ADR-NNN
 
 ## Context
+
 <Why is this decision needed?>
 
 ## Decision
+
 <What was decided?>
 
 ## Consequences
+
 ### Positive
+
 - ...
+
 ### Negative
+
 - ...
 ```
 
@@ -281,17 +296,17 @@ If you face ambiguity:
 
 ### Naming
 
-| Category | Pattern | Example |
-|----------|---------|---------|
-| Entity | `<name>.entity.ts` | `symbol-info.entity.ts` |
-| Value Object | `<name>.value-object.ts` | `search-query.value-object.ts` |
-| Domain Error | `<name>.error.ts` | `app.error.ts` |
-| Port | `<name>.port.ts` | `symbol-repository.port.ts` |
-| Use Case | `<name>.use-case.ts` | `search-symbols.use-case.ts` |
-| DTO | `<name>.dto.ts` | `search-result.dto.ts` |
-| Adapter | `<name>.adapter.ts` | `vscode-symbol.adapter.ts` |
-| Handler | `<name>.handler.ts` | `search.handler.ts` |
-| Test | `<name>.test.ts` | `search-symbols.use-case.test.ts` |
+| Category     | Pattern                  | Example                           |
+| ------------ | ------------------------ | --------------------------------- |
+| Entity       | `<name>.entity.ts`       | `symbol-info.entity.ts`           |
+| Value Object | `<name>.value-object.ts` | `search-query.value-object.ts`    |
+| Domain Error | `<name>.error.ts`        | `app.error.ts`                    |
+| Port         | `<name>.port.ts`         | `symbol-repository.port.ts`       |
+| Use Case     | `<name>.use-case.ts`     | `search-symbols.use-case.ts`      |
+| DTO          | `<name>.dto.ts`          | `search-result.dto.ts`            |
+| Adapter      | `<name>.adapter.ts`      | `vscode-symbol.adapter.ts`        |
+| Handler      | `<name>.handler.ts`      | `search.handler.ts`               |
+| Test         | `<name>.test.ts`         | `search-symbols.use-case.test.ts` |
 
 ### New File Checklist
 
@@ -381,10 +396,9 @@ describe('<UseCaseName>', () => {
 4. Write unit tests for the use case
 5. Implement adapter in `infrastructure/vscode-adapter/`
 6. Add HTTP handler in `infrastructure/http-server/`
-7. Add CLI command in `infrastructure/cli/`
-8. Update API spec (`docs/api-spec.md`)
-9. Run full verification: `tsc && eslint . && vitest run`
-10. Commit in logical steps (not one mega-commit)
+7. Update API spec (`docs/api-spec.md`)
+8. Run full verification: `tsc && eslint . && vitest run`
+9. Commit in logical steps (not one mega-commit)
 
 ### Fixing a Bug
 
@@ -407,19 +421,19 @@ describe('<UseCaseName>', () => {
 
 These patterns are banned. If you find yourself reaching for them, stop and reconsider.
 
-| Pattern | Why | Alternative |
-|---------|-----|-------------|
-| `any` | Destroys type safety | `unknown`, generics, zod |
-| `as` cast without runtime check | Lies to the compiler | Type guards, zod |
-| `// @ts-ignore` | Hides real errors | Fix the type error |
-| `eslint-disable` (type rules) | Undermines safety | Fix the code |
-| `console.log` | Unstructured, no control | Logger port |
-| `throw` in domain/application | Breaks Result contract | Return `Err()` |
-| God class | SRP violation | Split into focused use cases |
-| Barrel exports (`index.ts`) | Circular dependency risk | Direct imports |
-| Default exports | Less refactor-friendly | Named exports |
-| Mutable state in domain | Breaks predictability | Immutable value objects |
-| `setTimeout`/`setInterval` | Untestable | Inject a Timer port |
+| Pattern                         | Why                      | Alternative                  |
+| ------------------------------- | ------------------------ | ---------------------------- |
+| `any`                           | Destroys type safety     | `unknown`, generics, zod     |
+| `as` cast without runtime check | Lies to the compiler     | Type guards, zod             |
+| `// @ts-ignore`                 | Hides real errors        | Fix the type error           |
+| `eslint-disable` (type rules)   | Undermines safety        | Fix the code                 |
+| `console.log`                   | Unstructured, no control | Logger port                  |
+| `throw` in domain/application   | Breaks Result contract   | Return `Err()`               |
+| God class                       | SRP violation            | Split into focused use cases |
+| Barrel exports (`index.ts`)     | Circular dependency risk | Direct imports               |
+| Default exports                 | Less refactor-friendly   | Named exports                |
+| Mutable state in domain         | Breaks predictability    | Immutable value objects      |
+| `setTimeout`/`setInterval`      | Untestable               | Inject a Timer port          |
 
 ---
 
@@ -430,10 +444,7 @@ These patterns are banned. If you find yourself reaching for them, stop and reco
 npm install
 
 # Build extension
-npm run build:extension
-
-# Build CLI
-npm run build:cli
+npm run build
 
 # Run all checks (use before every commit)
 npm run check    # tsc --noEmit && eslint . && vitest run
