@@ -19,11 +19,15 @@ import { VscodeFileOutlineProviderAdapter } from './infrastructure/vscode-adapte
 import { VscodeDiagnosticsProviderAdapter } from './infrastructure/vscode-adapter/vscode-diagnostics-provider.adapter.js';
 import { VscodeWorkspaceOverviewProviderAdapter } from './infrastructure/vscode-adapter/vscode-workspace-overview-provider.adapter.js';
 import { writePortFile, removePortFile } from './port-discovery.js';
+import { installCli, repairCliSymlink } from './infrastructure/cli/cli-installer.js';
 
 let httpServer: LspRelayHttpServer | null = null;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+
+    // Auto-repair symlink if the extension was updated (spec section 2.3)
+    void repairCliSymlink(context.extensionPath);
 
     // --- Composition root ---------------------------------------------------
     const symbolSearcher = new VscodeSymbolSearcherAdapter(workspaceRoot);
@@ -63,6 +67,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 void vscode.window.showInformationMessage(
                     `LSP Relay is running on http://127.0.0.1:${port}`,
                 );
+            }),
+        );
+
+        context.subscriptions.push(
+            vscode.commands.registerCommand('lsp-relay.installCli', async () => {
+                const err = await installCli(context.extensionPath);
+                if (err) {
+                    void vscode.window.showErrorMessage(`[LSP Relay] CLI install failed: ${err}`);
+                } else {
+                    void vscode.window.showInformationMessage(
+                        'SemCode CLI installed at ~/.local/bin/semcode. ' +
+                        'Ensure ~/.local/bin is in your PATH to use it.',
+                    );
+                }
             }),
         );
     } catch (err) {

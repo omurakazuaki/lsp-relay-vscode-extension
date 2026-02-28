@@ -58,6 +58,29 @@ Location: $TMPDIR/vscode-semantic-search-<workspace_hash>.json
 
 > **Security:** The HTTP server binds to `127.0.0.1` only. No authentication is required since access is limited to the local machine.
 
+### 2.3 CLI Installation
+
+The CLI (`semcode`) is bundled inside the extension's `out/cli.js`. To make it available as a system command, the extension provides a VS Code command that creates a symbolic link.
+
+**Installation command:** `SemCode: Install CLI to PATH`
+
+This command creates a symlink at `~/.local/bin/semcode` → `<extensionPath>/out/cli.js`. The user must ensure `~/.local/bin` is in their `PATH`.
+
+#### Symlink auto-repair on extension update
+
+VS Code installs extensions into versioned directories (e.g., `~/.vscode/extensions/local.lsp-relay-0.1.0/`). When the extension is updated, the old directory is removed and a new one is created, which **breaks** existing symlinks.
+
+To handle this, the extension checks on every activation whether a symlink at the target path already exists. If it does but points to an outdated path (i.e., the old extension version), the symlink is automatically updated to point to the new `cli.js` location. This makes CLI updates transparent to the user — after the first manual install, subsequent extension updates are reflected in the CLI automatically.
+
+```
+Activation flow:
+  1. Check if ~/.local/bin/semcode exists
+  2. If it is a symlink pointing to a different extensionPath → update it
+  3. If it does not exist → do nothing (user has not opted in)
+```
+
+> **Note:** The symlink points to the file, not a copy. No separate CLI update step is needed after the initial install.
+
 ---
 
 ## 3. API Endpoints
@@ -72,36 +95,37 @@ Primary entry point for code exploration. Searches for symbols across the worksp
 
 #### Request Parameters
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `query` | `string` | **Yes** | Search query. Symbol name (e.g. `authMiddleware`) or natural language (e.g. `authentication logic`). |
-| `scope` | `string` | No | Search scope. One of: `workspace` (default), `file`, `directory`. |
-| `path` | `string` | No | File or directory path. Required when scope is `file` or `directory`. |
-| `kinds` | `string[]` | No | Filter by symbol kind: `function`, `class`, `interface`, `type`, `variable`, `method`, `property`, `enum`. Null returns all. |
-| `limit` | `integer` | No | Maximum number of results. Default: `15`. |
-| `include_body` | `boolean` | No | Include source code body in results. Default: `false`. Warning: significantly increases response size. |
+| Parameter      | Type       | Required | Description                                                                                                                  |
+| -------------- | ---------- | -------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `query`        | `string`   | **Yes**  | Search query. Symbol name (e.g. `authMiddleware`) or natural language (e.g. `authentication logic`).                         |
+| `scope`        | `string`   | No       | Search scope. One of: `workspace` (default), `file`, `directory`.                                                            |
+| `path`         | `string`   | No       | File or directory path. Required when scope is `file` or `directory`.                                                        |
+| `kinds`        | `string[]` | No       | Filter by symbol kind: `function`, `class`, `interface`, `type`, `variable`, `method`, `property`, `enum`. Null returns all. |
+| `limit`        | `integer`  | No       | Maximum number of results. Default: `15`.                                                                                    |
+| `include_body` | `boolean`  | No       | Include source code body in results. Default: `false`. Warning: significantly increases response size.                       |
 
 #### Response Fields
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `results[]` | `array` | Array of matching symbols. |
-| `results[].symbol` | `string` | Symbol name. |
-| `results[].kind` | `string` | Symbol kind (function, class, interface, etc.). |
-| `results[].signature` | `string` | Full type signature from the language server. |
-| `results[].doc` | `string\|null` | JSDoc/docstring extracted from hover information. |
-| `results[].file` | `string` | Relative file path from workspace root. |
-| `results[].line` | `integer` | 1-based line number. |
-| `results[].container` | `string` | Containing class, module, or namespace. |
-| `results[].exported` | `boolean` | Whether the symbol is exported. |
-| `results[].body` | `string\|null` | Source code (only when `include_body=true`). |
-| `results[].relevance` | `number` | Relevance score (0.0 to 1.0). |
-| `total` | `integer` | Total number of matches found. |
-| `truncated` | `boolean` | True if results were limited by the limit parameter. |
+| Field                 | Type           | Description                                          |
+| --------------------- | -------------- | ---------------------------------------------------- |
+| `results[]`           | `array`        | Array of matching symbols.                           |
+| `results[].symbol`    | `string`       | Symbol name.                                         |
+| `results[].kind`      | `string`       | Symbol kind (function, class, interface, etc.).      |
+| `results[].signature` | `string`       | Full type signature from the language server.        |
+| `results[].doc`       | `string\|null` | JSDoc/docstring extracted from hover information.    |
+| `results[].file`      | `string`       | Relative file path from workspace root.              |
+| `results[].line`      | `integer`      | 1-based line number.                                 |
+| `results[].container` | `string`       | Containing class, module, or namespace.              |
+| `results[].exported`  | `boolean`      | Whether the symbol is exported.                      |
+| `results[].body`      | `string\|null` | Source code (only when `include_body=true`).         |
+| `results[].relevance` | `number`       | Relevance score (0.0 to 1.0).                        |
+| `total`               | `integer`      | Total number of matches found.                       |
+| `truncated`           | `boolean`      | True if results were limited by the limit parameter. |
 
 #### Example
 
 **Request:**
+
 ```json
 {
   "query": "authentication middleware",
@@ -111,6 +135,7 @@ Primary entry point for code exploration. Searches for symbols across the worksp
 ```
 
 **Response:**
+
 ```json
 {
   "results": [
@@ -142,31 +167,32 @@ Retrieves detailed information about a specific symbol at a given file location.
 
 #### Request Parameters
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `file` | `string` | **Yes** | Relative file path from workspace root. |
-| `line` | `integer` | **Yes** | 1-based line number of the symbol. |
-| `character` | `integer` | No | 0-based character offset. If omitted, the primary symbol on the line is used. |
-| `include` | `string[]` | No | Fields to include: `signature`, `doc`, `body`, `references_summary`, `type_hierarchy`. Default: `[signature, doc, body]`. |
+| Parameter   | Type       | Required | Description                                                                                                               |
+| ----------- | ---------- | -------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `file`      | `string`   | **Yes**  | Relative file path from workspace root.                                                                                   |
+| `line`      | `integer`  | **Yes**  | 1-based line number of the symbol.                                                                                        |
+| `character` | `integer`  | No       | 0-based character offset. If omitted, the primary symbol on the line is used.                                             |
+| `include`   | `string[]` | No       | Fields to include: `signature`, `doc`, `body`, `references_summary`, `type_hierarchy`. Default: `[signature, doc, body]`. |
 
 #### Response Fields
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `symbol` | `string` | Symbol name. |
-| `kind` | `string` | Symbol kind. |
-| `signature` | `string` | Full type signature. |
-| `doc` | `string\|null` | Documentation string. |
-| `body` | `string\|null` | Full source code of the symbol. |
-| `body_lines` | `[int, int]` | Start and end line numbers of the body. |
-| `references_summary` | `object` | Reference count and locations grouped by file. |
-| `references_summary.total` | `integer` | Total number of references. |
-| `references_summary.by_file` | `object` | Map of file path to array of line numbers. |
-| `type_hierarchy` | `object\|null` | Inheritance info: `implements` and `extends`. |
+| Field                        | Type           | Description                                    |
+| ---------------------------- | -------------- | ---------------------------------------------- |
+| `symbol`                     | `string`       | Symbol name.                                   |
+| `kind`                       | `string`       | Symbol kind.                                   |
+| `signature`                  | `string`       | Full type signature.                           |
+| `doc`                        | `string\|null` | Documentation string.                          |
+| `body`                       | `string\|null` | Full source code of the symbol.                |
+| `body_lines`                 | `[int, int]`   | Start and end line numbers of the body.        |
+| `references_summary`         | `object`       | Reference count and locations grouped by file. |
+| `references_summary.total`   | `integer`      | Total number of references.                    |
+| `references_summary.by_file` | `object`       | Map of file path to array of line numbers.     |
+| `type_hierarchy`             | `object\|null` | Inheritance info: `implements` and `extends`.  |
 
 #### Example
 
 **Request:**
+
 ```json
 {
   "file": "src/middleware/auth.ts",
@@ -176,6 +202,7 @@ Retrieves detailed information about a specific symbol at a given file location.
 ```
 
 **Response:**
+
 ```json
 {
   "symbol": "authMiddleware",
@@ -203,28 +230,29 @@ Finds all usage locations of a symbol. Results include surrounding context lines
 
 #### Request Parameters
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `file` | `string` | **Yes** | Relative file path from workspace root. |
-| `line` | `integer` | **Yes** | 1-based line number of the symbol. |
-| `character` | `integer` | No | 0-based character offset. |
-| `context_lines` | `integer` | No | Number of lines before and after each reference to include. Default: `2`. |
-| `limit` | `integer` | No | Maximum number of references. Default: `30`. |
-| `group_by` | `string` | No | Grouping strategy: `file` (default) or `none`. |
+| Parameter       | Type      | Required | Description                                                               |
+| --------------- | --------- | -------- | ------------------------------------------------------------------------- |
+| `file`          | `string`  | **Yes**  | Relative file path from workspace root.                                   |
+| `line`          | `integer` | **Yes**  | 1-based line number of the symbol.                                        |
+| `character`     | `integer` | No       | 0-based character offset.                                                 |
+| `context_lines` | `integer` | No       | Number of lines before and after each reference to include. Default: `2`. |
+| `limit`         | `integer` | No       | Maximum number of references. Default: `30`.                              |
+| `group_by`      | `string`  | No       | Grouping strategy: `file` (default) or `none`.                            |
 
 #### Response Fields
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `symbol` | `string` | The resolved symbol name. |
-| `total` | `integer` | Total reference count. |
-| `references` | `object` | When `group_by=file`: map of file paths to reference arrays. |
-| `references[file][].line` | `integer` | Line number of the reference. |
-| `references[file][].context` | `string` | Surrounding code lines as a single string. |
+| Field                        | Type      | Description                                                  |
+| ---------------------------- | --------- | ------------------------------------------------------------ |
+| `symbol`                     | `string`  | The resolved symbol name.                                    |
+| `total`                      | `integer` | Total reference count.                                       |
+| `references`                 | `object`  | When `group_by=file`: map of file paths to reference arrays. |
+| `references[file][].line`    | `integer` | Line number of the reference.                                |
+| `references[file][].context` | `string`  | Surrounding code lines as a single string.                   |
 
 #### Example
 
 **Request:**
+
 ```json
 {
   "file": "src/middleware/auth.ts",
@@ -235,6 +263,7 @@ Finds all usage locations of a symbol. Results include surrounding context lines
 ```
 
 **Response:**
+
 ```json
 {
   "symbol": "authMiddleware",
@@ -264,30 +293,32 @@ Returns the structural outline of a file: imports, exports, classes, functions, 
 
 #### Request Parameters
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `file` | `string` | **Yes** | Relative file path from workspace root. |
-| `depth` | `integer` | No | Nesting depth. `1` = top-level only. Default: `2`. |
-| `include_signatures` | `boolean` | No | Include function/method signatures. Default: `true`. |
+| Parameter            | Type      | Required | Description                                          |
+| -------------------- | --------- | -------- | ---------------------------------------------------- |
+| `file`               | `string`  | **Yes**  | Relative file path from workspace root.              |
+| `depth`              | `integer` | No       | Nesting depth. `1` = top-level only. Default: `2`.   |
+| `include_signatures` | `boolean` | No       | Include function/method signatures. Default: `true`. |
 
 #### Response Fields
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `file` | `string` | File path. |
-| `language` | `string` | Detected language identifier. |
-| `lines` | `integer` | Total line count. |
-| `imports` | `array` | Import statements with module names and imported identifiers. |
-| `symbols` | `array` | Array of symbol objects with `name`, `kind`, `signature`, `line`, `exported`, and `children`. |
+| Field      | Type      | Description                                                                                   |
+| ---------- | --------- | --------------------------------------------------------------------------------------------- |
+| `file`     | `string`  | File path.                                                                                    |
+| `language` | `string`  | Detected language identifier.                                                                 |
+| `lines`    | `integer` | Total line count.                                                                             |
+| `imports`  | `array`   | Import statements with module names and imported identifiers.                                 |
+| `symbols`  | `array`   | Array of symbol objects with `name`, `kind`, `signature`, `line`, `exported`, and `children`. |
 
 #### Example
 
 **Request:**
+
 ```json
 { "file": "src/middleware/auth.ts" }
 ```
 
 **Response:**
+
 ```json
 {
   "file": "src/middleware/auth.ts",
@@ -334,28 +365,29 @@ Returns current errors, warnings, and informational diagnostics from the languag
 
 #### Request Parameters
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `file` | `string` | No | Specific file path. Omit to return diagnostics for the entire workspace. |
-| `severity` | `string[]` | No | Filter by severity: `error`, `warning`, `info`. Default: `[error, warning]`. |
+| Parameter  | Type       | Required | Description                                                                  |
+| ---------- | ---------- | -------- | ---------------------------------------------------------------------------- |
+| `file`     | `string`   | No       | Specific file path. Omit to return diagnostics for the entire workspace.     |
+| `severity` | `string[]` | No       | Filter by severity: `error`, `warning`, `info`. Default: `[error, warning]`. |
 
 #### Response Fields
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `file` | `string` | File path. |
-| `diagnostics[]` | `array` | Array of diagnostic objects. |
-| `diagnostics[].line` | `integer` | 1-based line number. |
-| `diagnostics[].character` | `integer` | 0-based character offset. |
-| `diagnostics[].severity` | `string` | One of: `error`, `warning`, `info`. |
-| `diagnostics[].message` | `string` | Diagnostic message from the language server. |
-| `diagnostics[].source` | `string` | Source (e.g. `typescript`, `eslint`). |
-| `diagnostics[].code` | `string\|int` | Diagnostic code (e.g. TS error number). |
-| `diagnostics[].context` | `string` | The source line containing the diagnostic. |
+| Field                     | Type          | Description                                  |
+| ------------------------- | ------------- | -------------------------------------------- |
+| `file`                    | `string`      | File path.                                   |
+| `diagnostics[]`           | `array`       | Array of diagnostic objects.                 |
+| `diagnostics[].line`      | `integer`     | 1-based line number.                         |
+| `diagnostics[].character` | `integer`     | 0-based character offset.                    |
+| `diagnostics[].severity`  | `string`      | One of: `error`, `warning`, `info`.          |
+| `diagnostics[].message`   | `string`      | Diagnostic message from the language server. |
+| `diagnostics[].source`    | `string`      | Source (e.g. `typescript`, `eslint`).        |
+| `diagnostics[].code`      | `string\|int` | Diagnostic code (e.g. TS error number).      |
+| `diagnostics[].context`   | `string`      | The source line containing the diagnostic.   |
 
 #### Example
 
 **Request:**
+
 ```json
 {
   "file": "src/middleware/auth.ts",
@@ -364,6 +396,7 @@ Returns current errors, warnings, and informational diagnostics from the languag
 ```
 
 **Response:**
+
 ```json
 {
   "file": "src/middleware/auth.ts",
@@ -389,30 +422,32 @@ Provides a high-level summary of the workspace: directory structure, languages, 
 
 #### Request Parameters
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `depth` | `integer` | No | Directory tree depth. Default: `2`. |
-| `include_stats` | `boolean` | No | Include language statistics. Default: `true`. |
+| Parameter       | Type      | Required | Description                                   |
+| --------------- | --------- | -------- | --------------------------------------------- |
+| `depth`         | `integer` | No       | Directory tree depth. Default: `2`.           |
+| `include_stats` | `boolean` | No       | Include language statistics. Default: `true`. |
 
 #### Response Fields
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `name` | `string` | Workspace/project name. |
-| `root` | `string` | Absolute path to workspace root. |
-| `languages` | `object` | Map of language to `{files, lines}` counts. |
-| `structure` | `string[]` | Indented directory tree as an array of strings. |
-| `entry_points` | `string[]` | Detected entry points (from package.json main, etc.). |
-| `active_diagnostics` | `object` | Counts of current errors and warnings. |
+| Field                | Type       | Description                                           |
+| -------------------- | ---------- | ----------------------------------------------------- |
+| `name`               | `string`   | Workspace/project name.                               |
+| `root`               | `string`   | Absolute path to workspace root.                      |
+| `languages`          | `object`   | Map of language to `{files, lines}` counts.           |
+| `structure`          | `string[]` | Indented directory tree as an array of strings.       |
+| `entry_points`       | `string[]` | Detected entry points (from package.json main, etc.). |
+| `active_diagnostics` | `object`   | Counts of current errors and warnings.                |
 
 #### Example
 
 **Request:**
+
 ```json
 { "depth": 2 }
 ```
 
 **Response:**
+
 ```json
 {
   "name": "my-api-server",
@@ -452,23 +487,23 @@ The CLI provides a command-line wrapper around the HTTP API, designed for invoca
 
 ### 4.1 Commands
 
-| Command | Description |
-|---------|-------------|
-| `semcode search <query>` | Search for symbols. Flags: `--kinds`, `--scope`, `--path`, `--limit`, `--include-body` |
-| `semcode inspect <file>:<line>` | Get detailed symbol info. Flag: `--include <fields>` |
-| `semcode refs <file>:<line>` | Find all references. Flags: `--context-lines`, `--limit` |
-| `semcode outline <file>` | Get file structure. Flag: `--depth` |
-| `semcode diagnostics [file]` | Get errors/warnings. Flag: `--severity` |
-| `semcode overview` | Get workspace summary. Flag: `--depth` |
-| `semcode status` | Check if VS Code extension is running and reachable. |
+| Command                         | Description                                                                            |
+| ------------------------------- | -------------------------------------------------------------------------------------- |
+| `semcode search <query>`        | Search for symbols. Flags: `--kinds`, `--scope`, `--path`, `--limit`, `--include-body` |
+| `semcode inspect <file>:<line>` | Get detailed symbol info. Flag: `--include <fields>`                                   |
+| `semcode refs <file>:<line>`    | Find all references. Flags: `--context-lines`, `--limit`                               |
+| `semcode outline <file>`        | Get file structure. Flag: `--depth`                                                    |
+| `semcode diagnostics [file]`    | Get errors/warnings. Flag: `--severity`                                                |
+| `semcode overview`              | Get workspace summary. Flag: `--depth`                                                 |
+| `semcode status`                | Check if VS Code extension is running and reachable.                                   |
 
 ### 4.2 Global Flags
 
-| Flag | Description |
-|------|-------------|
-| `--workspace <path>` | Explicitly specify workspace root (auto-detected from cwd by default). |
-| `--format json\|pretty` | Output format. Default: `json` (compact, for LLM consumption). |
-| `--timeout <ms>` | Request timeout in milliseconds. Default: `10000`. |
+| Flag                    | Description                                                            |
+| ----------------------- | ---------------------------------------------------------------------- |
+| `--workspace <path>`    | Explicitly specify workspace root (auto-detected from cwd by default). |
+| `--format json\|pretty` | Output format. Default: `json` (compact, for LLM consumption).         |
+| `--timeout <ms>`        | Request timeout in milliseconds. Default: `10000`.                     |
 
 ---
 
@@ -478,14 +513,14 @@ The following tool definitions are designed for use with OpenAI Function Calling
 
 ### 5.1 Tool Mapping
 
-| Tool Name | Endpoint | When to Use |
-|-----------|----------|-------------|
-| `code_search` | `POST /search` | Primary entry point. Use first to find relevant code. |
-| `code_inspect` | `POST /inspect` | Deep dive into a specific symbol found via search. |
-| `code_references` | `POST /references` | Find all usages. Understand impact of changes. |
-| `code_outline` | `POST /file_outline` | Understand file structure before reading source. |
-| `code_diagnostics` | `POST /diagnostics` | Check for errors after changes. |
-| `workspace_overview` | `POST /workspace_overview` | Orient within the project at task start. |
+| Tool Name            | Endpoint                   | When to Use                                           |
+| -------------------- | -------------------------- | ----------------------------------------------------- |
+| `code_search`        | `POST /search`             | Primary entry point. Use first to find relevant code. |
+| `code_inspect`       | `POST /inspect`            | Deep dive into a specific symbol found via search.    |
+| `code_references`    | `POST /references`         | Find all usages. Understand impact of changes.        |
+| `code_outline`       | `POST /file_outline`       | Understand file structure before reading source.      |
+| `code_diagnostics`   | `POST /diagnostics`        | Check for errors after changes.                       |
+| `workspace_overview` | `POST /workspace_overview` | Orient within the project at task start.              |
 
 ### 5.2 Tool Definitions (JSON Schema)
 
@@ -504,7 +539,18 @@ The following tool definitions are designed for use with OpenAI Function Calling
         },
         "kinds": {
           "type": "array",
-          "items": { "enum": ["function", "class", "interface", "type", "variable", "method", "property", "enum"] },
+          "items": {
+            "enum": [
+              "function",
+              "class",
+              "interface",
+              "type",
+              "variable",
+              "method",
+              "property",
+              "enum"
+            ]
+          },
           "description": "Filter by symbol kind. Omit to search all kinds."
         },
         "scope": {
@@ -535,7 +581,15 @@ The following tool definitions are designed for use with OpenAI Function Calling
         "line": { "type": "integer" },
         "include": {
           "type": "array",
-          "items": { "enum": ["signature", "doc", "body", "references_summary", "type_hierarchy"] },
+          "items": {
+            "enum": [
+              "signature",
+              "doc",
+              "body",
+              "references_summary",
+              "type_hierarchy"
+            ]
+          },
           "default": ["signature", "doc", "body"]
         }
       }
@@ -573,7 +627,10 @@ The following tool definitions are designed for use with OpenAI Function Calling
     "parameters": {
       "type": "object",
       "properties": {
-        "file": { "type": "string", "description": "Specific file, or omit for entire workspace" },
+        "file": {
+          "type": "string",
+          "description": "Specific file, or omit for entire workspace"
+        },
         "severity": {
           "type": "array",
           "items": { "enum": ["error", "warning", "info"] },
@@ -613,14 +670,14 @@ LLM agents should follow this general workflow when working with the codebase:
 
 All endpoints return standard HTTP status codes. Error responses include a JSON body with an `error` field containing a human-readable message.
 
-| Status | Meaning | Description |
-|--------|---------|-------------|
-| `200` | OK | Request succeeded. |
-| `400` | Bad Request | Invalid parameters (missing required field, invalid type, etc.). |
-| `404` | Not Found | File not found or symbol not found at the specified location. |
-| `408` | Timeout | Language server did not respond within the timeout period. |
-| `500` | Internal Error | Unexpected error in the extension. |
-| `503` | Unavailable | Language server is not ready (still indexing or not installed). |
+| Status | Meaning        | Description                                                      |
+| ------ | -------------- | ---------------------------------------------------------------- |
+| `200`  | OK             | Request succeeded.                                               |
+| `400`  | Bad Request    | Invalid parameters (missing required field, invalid type, etc.). |
+| `404`  | Not Found      | File not found or symbol not found at the specified location.    |
+| `408`  | Timeout        | Language server did not respond within the timeout period.       |
+| `500`  | Internal Error | Unexpected error in the extension.                               |
+| `503`  | Unavailable    | Language server is not ready (still indexing or not installed).  |
 
 The CLI tool translates these into appropriate exit codes: `0` for success, `1` for client errors, `2` for server/connection errors.
 
