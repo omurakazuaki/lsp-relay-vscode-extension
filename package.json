@@ -3,6 +3,7 @@
   "displayName": "LSP Relay - Semantic Code Search",
   "description": "Exposes VS Code language server capabilities via a local HTTP API for LLM agents",
   "version": "0.1.2",
+  "icon": "icon.png",
   "publisher": "local",
   "private": true,
   "repository": {
@@ -12,7 +13,7 @@
   "engines": {
     "vscode": "^1.85.0"
   },
-  "categories": ["Other"],
+  "categories": ["Programming Languages","AI"],
   "activationEvents": ["onStartupFinished"],
   "main": "./out/extension.js",
   "bin": {
@@ -39,7 +40,7 @@
     "build:extension": "node build.mjs --extension",
     "build:cli": "node build.mjs --cli",
     "package": "npx @vscode/vsce package --no-dependencies -o lsp-relay.vsix",
-    "install:ext": "npm run build && npm run package && code --uninstall-extension local.lsp-relay 2>/dev/null; code --install-extension ./lsp-relay.vsix",
+    "install:ext": "npm run build && npm run package && code --uninstall-extension local.lsp-relay && code --install-extension ./lsp-relay.vsix --force",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest watch",
