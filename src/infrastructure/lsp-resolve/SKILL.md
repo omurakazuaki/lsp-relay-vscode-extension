@@ -82,6 +82,11 @@ curl -s -X POST "http://127.0.0.1:${PORT}/inspect" \
 | `character` | integer  | No       | 0                    | 0-based character offset                                         |
 | `include`   | string[] | No       | signature, doc, body | Fields: signature, doc, body, references_summary, type_hierarchy |
 
+> **Important:** The `line` must point to a line **within a symbol's range** (its declaration or body).
+> Lines outside any symbol (imports, blank lines, comments between declarations) return a 404 error.
+> Use `/search` first to get the exact line number, then pass it to `/inspect`.
+> You can also use `/file_outline` to discover line numbers of all symbols in a file.
+
 ---
 
 ### POST /references — Find all usages of a symbol
@@ -99,6 +104,10 @@ curl -s -X POST "http://127.0.0.1:${PORT}/references" \
 | `context_lines` | integer | No       | 2       | Lines of surrounding context per reference |
 | `limit`         | integer | No       | 30      | Max references                             |
 
+> **Limitation:** References rely on the language server's static analysis. Dynamic dispatch
+> (e.g., `obj[methodName]()`), computed property access, and indirect references may not be detected.
+> Zero results does not necessarily mean a symbol is unused — consider combining with text-based search.
+
 ---
 
 ### POST /file_outline — Get file structure
@@ -114,6 +123,12 @@ curl -s -X POST "http://127.0.0.1:${PORT}/file_outline" \
 | `file`               | string  | **Yes**  |         | Relative file path                 |
 | `depth`              | integer | No       | 2       | Nesting depth (1 = top-level only) |
 | `include_signatures` | boolean | No       | true    | Include function/method signatures |
+
+> **Note:** Signatures come from the language server's `DocumentSymbol.detail` property.
+> Availability varies by language and symbol type — TypeScript typically provides signatures for
+> functions and methods, but may return `null` for interfaces, types, or variables.
+> For reliable type signatures, use `/inspect` on the symbol's line — it uses the hover provider,
+> which provides richer type information.
 
 ---
 
@@ -158,12 +173,27 @@ curl -s -X POST "http://127.0.0.1:${PORT}/workspace_overview" \
 1. **Discover port** — Read `~/.semcode/ports$(pwd)/port.json`
 2. **Overview** — `POST /workspace_overview` to understand project structure
 3. **Search** — `POST /search` to find relevant symbols
-4. **Inspect** — `POST /inspect` to get full details on a symbol
-5. **References** — `POST /references` to understand usage patterns
-6. **Diagnostics** — `POST /diagnostics` to verify correctness after changes
+4. **Outline** — `POST /file_outline` to get imports, exports, and structure of a file
+5. **Inspect** — `POST /inspect` to get full details on a symbol (signature, docs, body)
+6. **References** — `POST /references` to understand usage patterns
+7. **Diagnostics** — `POST /diagnostics` to verify correctness after changes
+
+> **Tip:** No single endpoint returns everything. Use `/file_outline` for a file's imports and
+> structural overview, then `/inspect` for deep details (resolved types, hover docs, source body)
+> on specific symbols.
+
+## Tips
+
+- **Large responses**: For `/inspect` with `body` or `/references` with many results, pipe output to a file:
+  `curl -s -X POST ... | jq . > /tmp/result.json`
+- **Minimize tokens**: Omit `include_body` in `/search` unless you need source code. Use `/inspect`
+  to fetch body for specific symbols instead.
+- The `/search` response includes a `truncated` field — if `true`, increase `limit` to see more results.
 
 ## Troubleshooting
 
 - **Port file not found**: VS Code extension is not running, or the workspace path doesn't match
 - **Connection refused**: Extension may have restarted — re-read the port file
 - **Empty results**: Language server may still be initializing — wait a few seconds and retry
+- **Truncated JSON output**: The server sends complete JSON. If output appears truncated, your terminal
+  may be limiting display length — redirect to a file: `curl ... > /tmp/result.json`
