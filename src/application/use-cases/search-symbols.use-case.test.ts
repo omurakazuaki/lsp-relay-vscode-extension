@@ -98,6 +98,37 @@ describe('SearchSymbolsUseCase', () => {
         }
     });
 
+    it('passes through body field when searcher returns symbols with bodies', async () => {
+        const symbols = [
+            makeSymbol({ symbol: 'myFunc', body: 'function myFunc() { return 42; }' }),
+        ];
+        const searcher = makeSearcher({ search: async () => Ok(symbols) });
+        const useCase = new SearchSymbolsUseCase(searcher);
+
+        const query = SearchQuery.create({ query: 'myFunc', includeBody: true });
+        if (!query.ok) throw new Error('fixture creation failed');
+
+        const result = await useCase.execute(query.value);
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+            expect(result.value.results[0]?.body).toBe('function myFunc() { return 42; }');
+        }
+    });
+
+    it('returns null body when includeBody is not set', async () => {
+        const symbols = [makeSymbol({ symbol: 'myFunc', body: null })];
+        const searcher = makeSearcher({ search: async () => Ok(symbols) });
+        const useCase = new SearchSymbolsUseCase(searcher);
+
+        const result = await useCase.execute(validQuery());
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+            expect(result.value.results[0]?.body).toBeNull();
+        }
+    });
+
     it('is not truncated when results are exactly at the limit', async () => {
         const symbols = Array.from({ length: 5 }, (_, i) => makeSymbol({ symbol: `fn${i}` }));
         const searcher = makeSearcher({ search: async () => Ok(symbols) });
@@ -140,6 +171,20 @@ describe('SearchQuery.create', () => {
         expect(result.ok).toBe(true);
         if (result.ok) {
             expect(result.value.limit).toBe(100);
+        }
+    });
+
+    it('stores includeBody flag (default false)', () => {
+        const result = SearchQuery.create({ query: 'test' });
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+            expect(result.value.includeBody).toBe(false);
+        }
+
+        const withBody = SearchQuery.create({ query: 'test', includeBody: true });
+        expect(withBody.ok).toBe(true);
+        if (withBody.ok) {
+            expect(withBody.value.includeBody).toBe(true);
         }
     });
 
