@@ -19,8 +19,8 @@ import { VscodeFileOutlineProviderAdapter } from './infrastructure/vscode-adapte
 import { VscodeDiagnosticsProviderAdapter } from './infrastructure/vscode-adapter/vscode-diagnostics-provider.adapter.js';
 import { VscodeWorkspaceOverviewProviderAdapter } from './infrastructure/vscode-adapter/vscode-workspace-overview-provider.adapter.js';
 import { writePortFile, removePortFile } from './port-discovery.js';
-import { installSkill } from './infrastructure/skill/skill-installer.js';
-import type { Platform } from './infrastructure/skill/skill-installer.js';
+import { installSkill } from './infrastructure/lsp-resolve/skill-installer.js';
+import type { Platform } from './infrastructure/lsp-resolve/skill-installer.js';
 
 let httpServer: LspRelayHttpServer | null = null;
 

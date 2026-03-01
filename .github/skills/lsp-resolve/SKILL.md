@@ -1,5 +1,5 @@
 ---
-name: semantic-search
+name: lsp-resolve
 description: >-
   Executes LSP-based exact code analysis via HTTP API.
   Use this tool for mathematically precise code structures, resolved types,
@@ -11,11 +11,12 @@ description: >-
   - outline: Get structural tree of imports, exports, and symbols in a file.
   - diagnostics: Get live language server errors/warnings.
   - overview: Get high-level workspace summary.
+  Trigger on: Code Analysis, Code Navigation, Code Understanding
 ---
 
-# SemCode — Semantic Code Search
+# LSP Relay — Type-Aware Code Navigation
 
-SemCode uses the VS Code language server to provide type-aware code navigation
+The **LSP Relay** extension uses the VS Code language server to provide type-aware code navigation
 via a local HTTP API. No CLI or Node.js installation required — use `curl` directly.
 
 ## Prerequisites

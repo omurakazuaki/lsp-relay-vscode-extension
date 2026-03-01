@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { SearchSymbolsUseCase } from '../../../application/use-cases/search-symbols.use-case.js';
 import { SearchQuery } from '../../../domain/value-objects/search-query.value-object.js';
-import type { AppError } from '../../../domain/errors/app-error.js';
+import { type HttpResponse, appErrorToStatus, describeError } from './handler-utils.js';
 
 const SearchRequestSchema = z.object({
     query: z.string(),
@@ -11,11 +11,6 @@ const SearchRequestSchema = z.object({
     limit: z.number().int().positive().optional(),
     include_body: z.boolean().optional(),
 });
-
-export interface HttpResponse {
-    status: number;
-    body: unknown;
-}
 
 export class SearchHandler {
     constructor(private readonly useCase: SearchSymbolsUseCase) {}
@@ -51,25 +46,5 @@ export class SearchHandler {
         }
 
         return { status: 200, body: result.value };
-    }
-}
-
-function appErrorToStatus(err: AppError): number {
-    switch (err.kind) {
-        case 'VALIDATION': return 400;
-        case 'NOT_FOUND': return 404;
-        case 'TIMEOUT': return 408;
-        case 'LSP_UNAVAILABLE': return 503;
-        case 'INTERNAL': return 500;
-    }
-}
-
-function describeError(err: AppError): string {
-    switch (err.kind) {
-        case 'VALIDATION': return err.message;
-        case 'NOT_FOUND': return `${err.entity} not found: ${err.id}`;
-        case 'TIMEOUT': return `Operation timed out: ${err.operation}`;
-        case 'LSP_UNAVAILABLE': return `Language server unavailable: ${err.reason}`;
-        case 'INTERNAL': return err.message;
     }
 }

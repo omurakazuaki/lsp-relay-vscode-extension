@@ -1,9 +1,8 @@
 import { z } from 'zod';
 import type { InspectSymbolUseCase } from '../../../application/use-cases/inspect-symbol.use-case.js';
 import { SymbolLocation } from '../../../domain/value-objects/symbol-location.value-object.js';
-import type { AppError } from '../../../domain/errors/app-error.js';
 import type { ReferencesSummary, TypeHierarchy } from '../../../domain/entities/symbol-detail.entity.js';
-import type { HttpResponse } from './search.handler.js';
+import { type HttpResponse, appErrorToStatus, describeError } from './handler-utils.js';
 
 const InspectRequestSchema = z.object({
     file: z.string(),
@@ -67,24 +66,4 @@ function toApiReferencesSummary(rs: ReferencesSummary): unknown {
 function toApiTypeHierarchy(th: TypeHierarchy | null): unknown {
     if (!th) return null;
     return { extends: th.extends, implements: th.implements };
-}
-
-function appErrorToStatus(err: AppError): number {
-    switch (err.kind) {
-        case 'VALIDATION': return 400;
-        case 'NOT_FOUND': return 404;
-        case 'TIMEOUT': return 408;
-        case 'LSP_UNAVAILABLE': return 503;
-        case 'INTERNAL': return 500;
-    }
-}
-
-function describeError(err: AppError): string {
-    switch (err.kind) {
-        case 'VALIDATION': return err.message;
-        case 'NOT_FOUND': return `${err.entity} not found: ${err.id}`;
-        case 'TIMEOUT': return `Operation timed out: ${err.operation}`;
-        case 'LSP_UNAVAILABLE': return `Language server unavailable: ${err.reason}`;
-        case 'INTERNAL': return err.message;
-    }
 }

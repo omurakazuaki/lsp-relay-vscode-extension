@@ -2,7 +2,7 @@ import * as fs from 'fs/promises';
 import * as crypto from 'crypto';
 import * as path from 'path';
 
-const SKILL_DIR_NAME = 'semantic-search';
+const SKILL_DIR_NAME = 'lsp-resolve';
 const SKILL_MD_FILENAME = 'SKILL.md';
 
 export const PLATFORM_SKILL_DIRS = {
@@ -41,7 +41,7 @@ async function readSkillMdContent(): Promise<string> {
 /**
  * Installs SKILL.md for the specified platforms.
  * Creates:
- *   <workspaceRoot>/.claude/skills/semantic-search/SKILL.md
+ *   <workspaceRoot>/.claude/skills/lsp-resolve/SKILL.md
  *   (same for .github/skills/... when copilot is included)
  *
  * Uses SHA-256 hash comparison to detect whether an existing SKILL.md
