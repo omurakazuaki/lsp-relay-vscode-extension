@@ -7,6 +7,22 @@ import { Ok } from '../../shared/result.js';
 import type { AppError } from '../../domain/errors/app-error.js';
 import type { DiagnosticItem, DiagnosticSeverity, FileDiagnostics } from '../../domain/entities/diagnostic.entity.js';
 
+// Extensions considered "code" for diagnostic purposes.
+// Markdown, YAML, TOML, lock files, etc. are excluded to prevent noise
+// from language-server false positives on non-code content.
+const CODE_EXTENSIONS = new Set([
+    '.ts', '.tsx', '.mts', '.cts',
+    '.js', '.jsx', '.mjs', '.cjs',
+    '.py', '.pyi',
+    '.rs', '.go', '.java', '.cs', '.cpp', '.c', '.h', '.hpp',
+    '.rb', '.php', '.swift', '.kt', '.kts',
+    '.vue', '.svelte',
+    '.sh', '.bash', '.zsh', '.fish',
+    '.html', '.css', '.scss', '.sass', '.less',
+    '.graphql', '.gql',
+    '.sql',
+]);
+
 export class VscodeDiagnosticsProviderAdapter implements DiagnosticsProvider {
     constructor(private readonly workspaceRoot: string) {}
 
@@ -28,6 +44,10 @@ export class VscodeDiagnosticsProviderAdapter implements DiagnosticsProvider {
         const results: FileDiagnostics[] = [];
 
         for (const [uri, diagnostics] of filtered) {
+            // Skip non-code files (e.g. .md, .json, .yaml) to avoid false positives
+            // from language servers that analyse text content inside those files.
+            if (!CODE_EXTENSIONS.has(path.extname(uri.fsPath).toLowerCase())) continue;
+
             const relFile = path
                 .relative(this.workspaceRoot, uri.fsPath)
                 .replace(/\\/g, '/');
