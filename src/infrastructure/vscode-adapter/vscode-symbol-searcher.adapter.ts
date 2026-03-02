@@ -52,8 +52,8 @@ export class VscodeSymbolSearcherAdapter implements SymbolSearcher {
                 relevance: calculateRelevance(s.name, query.query),
             }));
 
-        if (query.includeBody && mapped.length > 0) {
-            await enrichBodies(mapped, this.workspaceRoot);
+        if (mapped.length > 0) {
+            await enrichResults(mapped, this.workspaceRoot, query.includeBody ?? false);
         }
 
         const results: SymbolInfo[] = mapped;
@@ -61,11 +61,12 @@ export class VscodeSymbolSearcherAdapter implements SymbolSearcher {
     }
 }
 
-async function enrichBodies(
-    results: Array<{ symbol: string; file: string; line: number; body: string | null }>,
+async function enrichResults(
+    results: Array<{ symbol: string; file: string; line: number; body: string | null; exported: boolean }>,
     workspaceRoot: string,
+    includeBody: boolean,
 ): Promise<void> {
-    // Group results by file to avoid redundant VS Code API calls and file reads
+    // Group by file to minimise redundant VS Code API calls and file reads
     const byFile = new Map<string, typeof results>();
     for (const r of results) {
         const existing = byFile.get(r.file);
@@ -78,8 +79,25 @@ async function enrichBodies(
 
     for (const [relFile, fileResults] of byFile) {
         const absPath = path.join(workspaceRoot, relFile);
-        const uri = vscode.Uri.file(absPath);
 
+        let fileLines: string[];
+        try {
+            const content = await fs.readFile(absPath, 'utf8');
+            fileLines = content.split('\n');
+        } catch {
+            continue;
+        }
+
+        // Export detection: check the symbol's declaration line for the `export` keyword
+        for (const result of fileResults) {
+            const declarationLine = (fileLines[result.line - 1] ?? '').trimStart();
+            result.exported = /^export\s/.test(declarationLine);
+        }
+
+        if (!includeBody) continue;
+
+        // Body enrichment requires document symbols for exact source ranges
+        const uri = vscode.Uri.file(absPath);
         let docSymbols: vscode.DocumentSymbol[];
         try {
             docSymbols =
@@ -89,14 +107,6 @@ async function enrichBodies(
                 )) ?? [];
         } catch {
             continue; // graceful degradation: body stays null for this file
-        }
-
-        let fileLines: string[];
-        try {
-            const content = await fs.readFile(absPath, 'utf8');
-            fileLines = content.split('\n');
-        } catch {
-            continue;
         }
 
         for (const result of fileResults) {
