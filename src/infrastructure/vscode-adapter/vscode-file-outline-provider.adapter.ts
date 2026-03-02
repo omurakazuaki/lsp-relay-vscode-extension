@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import type { FileOutlineProvider, FileOutlineOptions } from '../../application/ports/file-outline-provider.port.js';
+import type { LspWarmupPort } from '../../application/ports/lsp-warmup.port.js';
 import type { Result } from '../../shared/result.js';
 import { Ok, Err } from '../../shared/result.js';
 import type { AppError } from '../../domain/errors/app-error.js';
@@ -9,12 +10,17 @@ import type { FileOutline, OutlineSymbol, ImportEntry } from '../../domain/entit
 import { VSCODE_KIND_MAP, parseHover } from './adapter-utils.js';
 
 export class VscodeFileOutlineProviderAdapter implements FileOutlineProvider {
-    constructor(private readonly workspaceRoot: string) {}
+    constructor(
+        private readonly workspaceRoot: string,
+        private readonly warmup: LspWarmupPort,
+    ) {}
 
     async getOutline(
         file: string,
         options: FileOutlineOptions,
     ): Promise<Result<FileOutline, AppError>> {
+        await this.warmup.ensureReady();
+
         const absPath = path.join(this.workspaceRoot, file);
         const uri = vscode.Uri.file(absPath);
 

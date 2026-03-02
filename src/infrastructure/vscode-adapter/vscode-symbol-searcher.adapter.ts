@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import type { SymbolSearcher } from '../../application/ports/symbol-searcher.port.js';
+import type { LspWarmupPort } from '../../application/ports/lsp-warmup.port.js';
 import type { Result } from '../../shared/result.js';
 import { Ok, Err } from '../../shared/result.js';
 import type { AppError } from '../../domain/errors/app-error.js';
@@ -14,9 +15,14 @@ import { VSCODE_KIND_MAP, findSymbolByNameAndLine, parseHover } from './adapter-
  * Only the `vscode` module is imported here — never in domain/application.
  */
 export class VscodeSymbolSearcherAdapter implements SymbolSearcher {
-    constructor(private readonly workspaceRoot: string) {}
+    constructor(
+        private readonly workspaceRoot: string,
+        private readonly warmup: LspWarmupPort,
+    ) {}
 
     async search(query: SearchQuery): Promise<Result<SymbolInfo[], AppError>> {
+        await this.warmup.ensureReady();
+
         if (query.scope !== 'workspace') {
             // File/directory scope is deferred to a future implementation
             return Err({ kind: 'INTERNAL', message: `Scope "${query.scope}" not yet implemented` });

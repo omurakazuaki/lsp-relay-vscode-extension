@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import type { ReferenceProvider, ReferenceProviderResult } from '../../application/ports/reference-provider.port.js';
+import type { LspWarmupPort } from '../../application/ports/lsp-warmup.port.js';
 import type { Result } from '../../shared/result.js';
 import { Ok, Err } from '../../shared/result.js';
 import type { AppError } from '../../domain/errors/app-error.js';
@@ -9,12 +10,17 @@ import type { SymbolLocation } from '../../domain/value-objects/symbol-location.
 import { extractContext, findSymbolByLine } from './adapter-utils.js';
 
 export class VscodeReferenceProviderAdapter implements ReferenceProvider {
-    constructor(private readonly workspaceRoot: string) {}
+    constructor(
+        private readonly workspaceRoot: string,
+        private readonly warmup: LspWarmupPort,
+    ) {}
 
     async findReferences(
         location: SymbolLocation,
         options: { readonly contextLines: number; readonly limit: number },
     ): Promise<Result<ReferenceProviderResult, AppError>> {
+        await this.warmup.ensureReady();
+
         const absPath = path.join(this.workspaceRoot, location.file);
         const uri = vscode.Uri.file(absPath);
 
