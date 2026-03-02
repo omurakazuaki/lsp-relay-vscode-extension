@@ -10,6 +10,7 @@ const SearchRequestSchema = z.object({
     kinds: z.array(z.string()).optional(),
     limit: z.number().int().positive().optional(),
     include_body: z.boolean().optional(),
+    include_hover: z.boolean().optional(),
 });
 
 export class SearchHandler {
@@ -34,6 +35,7 @@ export class SearchHandler {
             kinds: data.kinds,
             limit: data.limit,
             includeBody: data.include_body,
+            includeHover: data.include_hover,
         });
         if (!queryResult.ok) {
             return { status: 400, body: { error: describeError(queryResult.error) } };

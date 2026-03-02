@@ -2,19 +2,25 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import type { FileOutlineProvider, FileOutlineOptions } from '../../application/ports/file-outline-provider.port.js';
+import type { LspWarmupPort } from '../../application/ports/lsp-warmup.port.js';
 import type { Result } from '../../shared/result.js';
 import { Ok, Err } from '../../shared/result.js';
 import type { AppError } from '../../domain/errors/app-error.js';
 import type { FileOutline, OutlineSymbol, ImportEntry } from '../../domain/entities/file-outline.entity.js';
-import { VSCODE_KIND_MAP } from './adapter-utils.js';
+import { VSCODE_KIND_MAP, parseHover } from './adapter-utils.js';
 
 export class VscodeFileOutlineProviderAdapter implements FileOutlineProvider {
-    constructor(private readonly workspaceRoot: string) {}
+    constructor(
+        private readonly workspaceRoot: string,
+        private readonly warmup: LspWarmupPort,
+    ) {}
 
     async getOutline(
         file: string,
         options: FileOutlineOptions,
     ): Promise<Result<FileOutline, AppError>> {
+        await this.warmup.ensureReady();
+
         const absPath = path.join(this.workspaceRoot, file);
         const uri = vscode.Uri.file(absPath);
 
@@ -46,42 +52,93 @@ export class VscodeFileOutlineProviderAdapter implements FileOutlineProvider {
             }
         }
 
-        // Parse imports from file text
-        let imports: ImportEntry[] = [];
+        // Read file text once — used for import parsing and export detection
+        let text = '';
         try {
-            const text = openDoc?.getText() ?? (await fs.readFile(absPath, 'utf8'));
-            imports = parseImports(text);
+            text = openDoc?.getText() ?? (await fs.readFile(absPath, 'utf8'));
         } catch {
-            imports = [];
+            // text stays empty; imports and export detection degrade gracefully
+        }
+        const imports = parseImports(text);
+
+        // Build set of 0-based line indices where the `export` keyword appears
+        const exportedLineSet = new Set<number>();
+        for (const [i, line] of text.split('\n').entries()) {
+            if (/^export\s/.test((line ?? '').trimStart())) {
+                exportedLineSet.add(i);
+            }
         }
 
         // Convert DocumentSymbol tree to OutlineSymbol[]
-        const symbols = docSymbols
-            .map((s) => toOutlineSymbol(s, options, 1))
-            .filter((s): s is OutlineSymbol => s !== null);
+        const symbols = (
+            await Promise.all(docSymbols.map((s) => toOutlineSymbol(s, options, uri, 1, exportedLineSet)))
+        ).filter((s): s is OutlineSymbol => s !== null);
 
         return Ok({ file, language: languageId, lines: lineCount, imports, symbols });
     }
 }
 
-function toOutlineSymbol(
+// Symbol kinds that meaningfully contain other named symbols (class members, enum
+// variants, etc.). Function/method bodies are excluded so local variables inside
+// them are never surfaced as outline children.
+const CONTAINER_SYMBOL_KINDS = new Set([
+    vscode.SymbolKind.Class,
+    vscode.SymbolKind.Module,
+    vscode.SymbolKind.Namespace,
+    vscode.SymbolKind.Package,
+    vscode.SymbolKind.Interface,
+    vscode.SymbolKind.Enum,
+    vscode.SymbolKind.Struct,
+    vscode.SymbolKind.Object,
+]);
+
+async function toOutlineSymbol(
     sym: vscode.DocumentSymbol,
     options: FileOutlineOptions,
+    uri: vscode.Uri,
     depth: number,
-): OutlineSymbol | null {
+    exportedLines: ReadonlySet<number>,
+): Promise<OutlineSymbol | null> {
     const kind = VSCODE_KIND_MAP[sym.kind] ?? 'unknown';
+
+    // Only recurse into container types (class, interface, enum, …).
+    // Function/method bodies are not recursed so local variables are hidden.
     const children: OutlineSymbol[] =
-        depth < options.depth
-            ? sym.children
-                  .map((c) => toOutlineSymbol(c, options, depth + 1))
-                  .filter((c): c is OutlineSymbol => c !== null)
+        depth < options.depth && CONTAINER_SYMBOL_KINDS.has(sym.kind)
+            ? (
+                  await Promise.all(
+                      sym.children.map((c) => toOutlineSymbol(c, options, uri, depth + 1, exportedLines)),
+                  )
+              ).filter((c): c is OutlineSymbol => c !== null)
             : [];
+
+    let signature: string | null = null;
+    if (options.includeSignatures) {
+        // sym.detail is populated by some language servers (Go, Java) but is
+        // typically empty for TypeScript. Fall back to the hover provider which
+        // always returns the resolved type signature.
+        signature = sym.detail || null;
+        if (!signature) {
+            try {
+                const hovers =
+                    (await vscode.commands.executeCommand<vscode.Hover[]>(
+                        'vscode.executeHoverProvider',
+                        uri,
+                        sym.selectionRange.start,
+                    )) ?? [];
+                signature = parseHover(hovers[0]).signature;
+            } catch {
+                // graceful degradation — signature remains null
+            }
+        }
+    }
+
     return {
         name: sym.name,
         kind,
         line: sym.selectionRange.start.line + 1,
-        signature: options.includeSignatures ? (sym.detail || null) : null,
-        exported: false, // conservative default without parsing source
+        signature,
+        exported: exportedLines.has(sym.range.start.line),
         children,
     };
 }

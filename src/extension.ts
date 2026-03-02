@@ -1,23 +1,19 @@
 import * as vscode from 'vscode';
 import { LspRelayHttpServer } from './infrastructure/http-server/server.js';
 import { SearchHandler } from './infrastructure/http-server/handlers/search.handler.js';
-import { InspectHandler } from './infrastructure/http-server/handlers/inspect.handler.js';
 import { ReferencesHandler } from './infrastructure/http-server/handlers/references.handler.js';
 import { FileOutlineHandler } from './infrastructure/http-server/handlers/file-outline.handler.js';
 import { DiagnosticsHandler } from './infrastructure/http-server/handlers/diagnostics.handler.js';
-import { WorkspaceOverviewHandler } from './infrastructure/http-server/handlers/workspace-overview.handler.js';
 import { SearchSymbolsUseCase } from './application/use-cases/search-symbols.use-case.js';
-import { InspectSymbolUseCase } from './application/use-cases/inspect-symbol.use-case.js';
 import { FindReferencesUseCase } from './application/use-cases/find-references.use-case.js';
 import { GetFileOutlineUseCase } from './application/use-cases/get-file-outline.use-case.js';
 import { GetDiagnosticsUseCase } from './application/use-cases/get-diagnostics.use-case.js';
-import { GetWorkspaceOverviewUseCase } from './application/use-cases/get-workspace-overview.use-case.js';
 import { VscodeSymbolSearcherAdapter } from './infrastructure/vscode-adapter/vscode-symbol-searcher.adapter.js';
-import { VscodeSymbolInspectorAdapter } from './infrastructure/vscode-adapter/vscode-symbol-inspector.adapter.js';
 import { VscodeReferenceProviderAdapter } from './infrastructure/vscode-adapter/vscode-reference-provider.adapter.js';
 import { VscodeFileOutlineProviderAdapter } from './infrastructure/vscode-adapter/vscode-file-outline-provider.adapter.js';
 import { VscodeDiagnosticsProviderAdapter } from './infrastructure/vscode-adapter/vscode-diagnostics-provider.adapter.js';
-import { VscodeWorkspaceOverviewProviderAdapter } from './infrastructure/vscode-adapter/vscode-workspace-overview-provider.adapter.js';
+import { VscodeLspWarmupAdapter } from './infrastructure/vscode-adapter/vscode-lsp-warmup.adapter.js';
+import { NodeTimerAdapter } from './infrastructure/vscode-adapter/node-timer.adapter.js';
 import { writePortFile, removePortFile } from './port-discovery.js';
 import { installSkill } from './infrastructure/lsp-resolve/skill-installer.js';
 import type { Platform } from './infrastructure/lsp-resolve/skill-installer.js';
@@ -28,20 +24,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
 
     // --- Composition root ---------------------------------------------------
-    const symbolSearcher = new VscodeSymbolSearcherAdapter(workspaceRoot);
-    const symbolInspector = new VscodeSymbolInspectorAdapter(workspaceRoot);
-    const referenceProvider = new VscodeReferenceProviderAdapter(workspaceRoot);
-    const fileOutlineProvider = new VscodeFileOutlineProviderAdapter(workspaceRoot);
+    // warmup is shared across all LSP-dependent adapters so that concurrent
+    // requests only trigger a single warmup sequence (see LspWarmupPort contract).
+    const warmup = new VscodeLspWarmupAdapter(new NodeTimerAdapter());
+    const symbolSearcher = new VscodeSymbolSearcherAdapter(workspaceRoot, warmup);
+    const referenceProvider = new VscodeReferenceProviderAdapter(workspaceRoot, warmup);
+    const fileOutlineProvider = new VscodeFileOutlineProviderAdapter(workspaceRoot, warmup);
     const diagnosticsProvider = new VscodeDiagnosticsProviderAdapter(workspaceRoot);
-    const workspaceOverviewProvider = new VscodeWorkspaceOverviewProviderAdapter(workspaceRoot);
 
     httpServer = new LspRelayHttpServer({
         search: new SearchHandler(new SearchSymbolsUseCase(symbolSearcher)),
-        inspect: new InspectHandler(new InspectSymbolUseCase(symbolInspector)),
         references: new ReferencesHandler(new FindReferencesUseCase(referenceProvider)),
         fileOutline: new FileOutlineHandler(new GetFileOutlineUseCase(fileOutlineProvider)),
         diagnostics: new DiagnosticsHandler(new GetDiagnosticsUseCase(diagnosticsProvider)),
-        workspaceOverview: new WorkspaceOverviewHandler(new GetWorkspaceOverviewUseCase(workspaceOverviewProvider)),
     });
     // ------------------------------------------------------------------------
 

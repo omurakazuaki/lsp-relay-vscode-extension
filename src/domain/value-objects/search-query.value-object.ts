@@ -13,6 +13,7 @@ export interface SearchQueryInput {
     readonly kinds?: string[] | undefined;
     readonly limit?: number | undefined;
     readonly includeBody?: boolean | undefined;
+    readonly includeHover?: boolean | undefined;
 }
 
 /** Validated, immutable search parameters. */
@@ -24,6 +25,7 @@ export class SearchQuery {
         readonly kinds: ReadonlyArray<SymbolKind> | null,
         readonly limit: number,
         readonly includeBody: boolean,
+        readonly includeHover: boolean,
     ) {}
 
     static create(input: SearchQueryInput): Result<SearchQuery, AppError> {
@@ -47,6 +49,7 @@ export class SearchQuery {
                 input.kinds ? (input.kinds as SymbolKind[]) : null,
                 limit,
                 input.includeBody ?? false,
+                input.includeHover ?? false,
             ),
         );
     }

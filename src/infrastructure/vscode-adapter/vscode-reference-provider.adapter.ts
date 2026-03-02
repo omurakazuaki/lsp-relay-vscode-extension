@@ -2,39 +2,46 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import type { ReferenceProvider, ReferenceProviderResult } from '../../application/ports/reference-provider.port.js';
+import type { LspWarmupPort } from '../../application/ports/lsp-warmup.port.js';
 import type { Result } from '../../shared/result.js';
 import { Ok, Err } from '../../shared/result.js';
 import type { AppError } from '../../domain/errors/app-error.js';
 import type { SymbolLocation } from '../../domain/value-objects/symbol-location.value-object.js';
-import { extractContext, parseHover } from './adapter-utils.js';
+import { extractContext, findSymbolByLine } from './adapter-utils.js';
 
 export class VscodeReferenceProviderAdapter implements ReferenceProvider {
-    constructor(private readonly workspaceRoot: string) {}
+    constructor(
+        private readonly workspaceRoot: string,
+        private readonly warmup: LspWarmupPort,
+    ) {}
 
     async findReferences(
         location: SymbolLocation,
         options: { readonly contextLines: number; readonly limit: number },
     ): Promise<Result<ReferenceProviderResult, AppError>> {
+        await this.warmup.ensureReady();
+
         const absPath = path.join(this.workspaceRoot, location.file);
         const uri = vscode.Uri.file(absPath);
-        const pos = new vscode.Position(location.line - 1, location.character);
 
-        // Get symbol name via hover (best-effort)
+        // Resolve the target symbol and use its selectionRange.start as the
+        // reference position. This ensures indented symbols (methods, constructors)
+        // are correctly targeted even when the caller passes character=0.
         let symbolName = `${location.file}:${location.line}`;
+        let refPos = new vscode.Position(location.line - 1, location.character);
         try {
-            const hovers =
-                (await vscode.commands.executeCommand<vscode.Hover[]>(
-                    'vscode.executeHoverProvider',
+            const docSymbols =
+                (await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
+                    'vscode.executeDocumentSymbolProvider',
                     uri,
-                    pos,
                 )) ?? [];
-            const parsed = parseHover(hovers[0]);
-            if (parsed.signature) {
-                const match = /\b(\w+)\s*[(:=<]/.exec(parsed.signature);
-                if (match?.[1]) symbolName = match[1];
+            const found = findSymbolByLine(docSymbols, location.line - 1);
+            if (found) {
+                symbolName = found.name;
+                refPos = found.selectionRange.start;
             }
         } catch {
-            // use fallback name
+            // use fallback name and position
         }
 
         // Find references
@@ -44,7 +51,7 @@ export class VscodeReferenceProviderAdapter implements ReferenceProvider {
                 (await vscode.commands.executeCommand<vscode.Location[]>(
                     'vscode.executeReferenceProvider',
                     uri,
-                    pos,
+                    refPos,
                 )) ?? [];
         } catch (cause) {
             return Err({ kind: 'LSP_UNAVAILABLE', reason: String(cause) });

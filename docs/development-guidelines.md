@@ -92,16 +92,13 @@ All development begins with interface design. Before writing any implementation,
 ```typescript
 // application/ports/symbol-repository.port.ts
 
-export interface SymbolRepository {
+export interface SymbolSearcher {
   /** Search workspace symbols by query string */
   search(query: SearchQuery): Promise<Result<SymbolInfo[]>>;
-
-  /** Get detailed information for a specific symbol */
-  inspect(location: SymbolLocation): Promise<Result<SymbolDetail>>;
 }
 
-// infrastructure/vscode-adapter/vscode-symbol-repository.ts
-export class VsCodeSymbolRepository implements SymbolRepository {
+// infrastructure/vscode-adapter/vscode-symbol-searcher.adapter.ts
+export class VscodeSymbolSearcherAdapter implements SymbolSearcher {
   // ... implementation using vscode.executeWorkspaceSymbolProvider
 }
 ```
@@ -203,16 +200,15 @@ Port interfaces must be small and focused. Prefer multiple specific interfaces o
 interface SymbolSearcher {
   search(q: SearchQuery): Promise<Result<SymbolInfo[]>>;
 }
-interface SymbolInspector {
-  inspect(loc: SymbolLocation): Promise<Result<SymbolDetail>>;
+interface ReferenceProvider {
+  findReferences(loc: SymbolLocation): Promise<Result<Reference[]>>;
 }
 // Each consumer depends only on what it actually needs
 
 // ❌ BAD: Monolithic interface
 interface SymbolService {
   search(q: SearchQuery): ...
-  inspect(loc: SymbolLocation): ...
-  getReferences(loc: ...): ...
+  findReferences(loc: SymbolLocation): ...
   getDiagnostics(file: ...): ...
   getOutline(file: ...): ...
   // Consumer forced to depend on all
@@ -401,8 +397,8 @@ application/
   use-cases/
     search-symbols.use-case.ts
     search-symbols.use-case.test.ts    # co-located
-    inspect-symbol.use-case.ts
-    inspect-symbol.use-case.test.ts
+    find-references.use-case.ts
+    find-references.use-case.test.ts
 ```
 
 ---
@@ -497,7 +493,7 @@ Commit messages follow [Conventional Commits](https://www.conventionalcommits.or
 | `feat`     | New feature                             | `feat(search): add kind filter to symbol search`     |
 | `fix`      | Bug fix                                 | `fix(http): handle empty query parameter`            |
 | `refactor` | Code change that neither fixes nor adds | `refactor(domain): extract SearchQuery value object` |
-| `test`     | Adding or updating tests                | `test(inspect): add timeout error case`              |
+| `test`     | Adding or updating tests                | `test(search): add include_hover edge case`          |
 | `docs`     | Documentation only                      | `docs: update API spec with /diagnostics`            |
 | `chore`    | Build, CI, tooling                      | `chore: upgrade typescript to 5.5`                   |
 | `perf`     | Performance improvement                 | `perf(search): cache workspace symbol results`       |
@@ -506,16 +502,14 @@ Commit messages follow [Conventional Commits](https://www.conventionalcommits.or
 
 | Scope      | Area                                         |
 | ---------- | -------------------------------------------- |
-| `domain`   | Domain layer entities, value objects, errors |
-| `search`   | Search endpoint / use case                   |
-| `inspect`  | Inspect endpoint / use case                  |
-| `refs`     | References endpoint / use case               |
-| `outline`  | File outline endpoint / use case             |
-| `diag`     | Diagnostics endpoint / use case              |
-| `overview` | Workspace overview endpoint / use case       |
-| `http`     | HTTP server infrastructure                   |
-| `skill`    | Skill installer                              |
-| `vscode`   | VS Code extension adapter                    |
+| `domain`  | Domain layer entities, value objects, errors |
+| `search`  | Search endpoint / use case                   |
+| `refs`    | References endpoint / use case               |
+| `outline` | File outline endpoint / use case             |
+| `diag`    | Diagnostics endpoint / use case              |
+| `http`    | HTTP server infrastructure                   |
+| `skill`   | Skill installer                              |
+| `vscode`  | VS Code extension adapter                    |
 
 ### 6.2 Single Responsibility Commits
 

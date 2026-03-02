@@ -1,19 +1,15 @@
 import * as http from 'http';
 import * as net from 'net';
 import type { SearchHandler } from './handlers/search.handler.js';
-import type { InspectHandler } from './handlers/inspect.handler.js';
 import type { ReferencesHandler } from './handlers/references.handler.js';
 import type { FileOutlineHandler } from './handlers/file-outline.handler.js';
 import type { DiagnosticsHandler } from './handlers/diagnostics.handler.js';
-import type { WorkspaceOverviewHandler } from './handlers/workspace-overview.handler.js';
 
 export interface RouteHandlers {
     search: SearchHandler;
-    inspect: InspectHandler;
     references: ReferencesHandler;
     fileOutline: FileOutlineHandler;
     diagnostics: DiagnosticsHandler;
-    workspaceOverview: WorkspaceOverviewHandler;
 }
 
 /**
@@ -91,9 +87,6 @@ export class LspRelayHttpServer {
             case '/search':
                 response = await this.handlers.search.handle(body);
                 break;
-            case '/inspect':
-                response = await this.handlers.inspect.handle(body);
-                break;
             case '/references':
                 response = await this.handlers.references.handle(body);
                 break;
@@ -102,9 +95,6 @@ export class LspRelayHttpServer {
                 break;
             case '/diagnostics':
                 response = await this.handlers.diagnostics.handle(body);
-                break;
-            case '/workspace_overview':
-                response = await this.handlers.workspaceOverview.handle(body);
                 break;
             default:
                 res.writeHead(404);
