@@ -113,7 +113,8 @@ Primary entry point for code exploration. Searches for symbols across the worksp
 | `path`         | `string`   | No       | File or directory path. Required when scope is `file` or `directory`.                                                        |
 | `kinds`        | `string[]` | No       | Filter by symbol kind: `function`, `class`, `interface`, `type`, `variable`, `method`, `property`, `enum`. Null returns all. |
 | `limit`        | `integer`  | No       | Maximum number of results. Default: `15`.                                                                                    |
-| `include_body` | `boolean`  | No       | Include source code body in results. Default: `false`. Warning: significantly increases response size.                       |
+| `include_body`  | `boolean`  | No       | Include source code body and type signature (from `DocumentSymbol.detail`) in results. Default: `false`.                    |
+| `include_hover` | `boolean`  | No       | Include JSDoc `doc` string via hover provider. Also refines `signature` with resolved types. Default: `false`.               |
 
 #### Response Fields
 
@@ -122,8 +123,8 @@ Primary entry point for code exploration. Searches for symbols across the worksp
 | `results[]`           | `array`        | Array of matching symbols.                           |
 | `results[].symbol`    | `string`       | Symbol name.                                         |
 | `results[].kind`      | `string`       | Symbol kind (function, class, interface, etc.).      |
-| `results[].signature` | `string`       | Full type signature from the language server.        |
-| `results[].doc`       | `string\|null` | JSDoc/docstring extracted from hover information.    |
+| `results[].signature` | `string\|null` | Type signature. Populated when `include_body` or `include_hover` is true. |
+| `results[].doc`       | `string\|null` | JSDoc string. Populated only when `include_hover` is true.                |
 | `results[].file`      | `string`       | Relative file path from workspace root.              |
 | `results[].line`      | `integer`      | 1-based line number.                                 |
 | `results[].container` | `string`       | Containing class, module, or namespace.              |
@@ -170,72 +171,7 @@ Primary entry point for code exploration. Searches for symbols across the worksp
 
 > **Note:** The `signature` and `doc` fields are extracted from the language server's hover information. If the language server does not provide this data for a particular symbol, these fields will be `null`.
 
----
-
-### 3.2 `POST /inspect`
-
-Retrieves detailed information about a specific symbol at a given file location. Use after `/search` to dive deeper into a particular result. Supports selective field inclusion to minimize response size.
-
-#### Request Parameters
-
-| Parameter   | Type       | Required | Description                                                                                                               |
-| ----------- | ---------- | -------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `file`      | `string`   | **Yes**  | Relative file path from workspace root.                                                                                   |
-| `line`      | `integer`  | **Yes**  | 1-based line number of the symbol.                                                                                        |
-| `character` | `integer`  | No       | 0-based character offset. If omitted, the primary symbol on the line is used.                                             |
-| `include`   | `string[]` | No       | Fields to include: `signature`, `doc`, `body`, `references_summary`, `type_hierarchy`. Default: `[signature, doc, body]`. |
-
-#### Response Fields
-
-| Field                        | Type           | Description                                    |
-| ---------------------------- | -------------- | ---------------------------------------------- |
-| `symbol`                     | `string`       | Symbol name.                                   |
-| `kind`                       | `string`       | Symbol kind.                                   |
-| `signature`                  | `string`       | Full type signature.                           |
-| `doc`                        | `string\|null` | Documentation string.                          |
-| `body`                       | `string\|null` | Full source code of the symbol.                |
-| `body_lines`                 | `[int, int]`   | Start and end line numbers of the body.        |
-| `references_summary`         | `object`       | Reference count and locations grouped by file. |
-| `references_summary.total`   | `integer`      | Total number of references.                    |
-| `references_summary.by_file` | `object`       | Map of file path to array of line numbers.     |
-| `type_hierarchy`             | `object\|null` | Inheritance info: `implements` and `extends`.  |
-
-#### Example
-
-**Request:**
-
-```json
-{
-  "file": "src/middleware/auth.ts",
-  "line": 42,
-  "include": ["signature", "doc", "body", "references_summary"]
-}
-```
-
-**Response:**
-
-```json
-{
-  "symbol": "authMiddleware",
-  "kind": "function",
-  "signature": "(req: Request, res: Response, next: NextFunction) => Promise<void>",
-  "doc": "Validates JWT token and attaches user to request.\n@throws UnauthorizedError if token is invalid",
-  "body": "export async function authMiddleware(req: Request, ...) {\n  const token = req.headers.authorization?.split(' ')[1];\n  ...\n}",
-  "body_lines": [42, 68],
-  "references_summary": {
-    "total": 12,
-    "by_file": {
-      "src/routes/api.ts": [15, 23, 47],
-      "src/routes/admin.ts": [8],
-      "src/app.ts": [31]
-    }
-  }
-}
-```
-
----
-
-### 3.3 `POST /references`
+### 3.2 `POST /references`
 
 Finds all usage locations of a symbol. Results include surrounding context lines for each reference, enabling the LLM to understand how the symbol is used without additional tool calls.
 
@@ -298,7 +234,7 @@ Finds all usage locations of a symbol. Results include surrounding context lines
 
 ---
 
-### 3.4 `POST /file_outline`
+### 3.3 `POST /file_outline`
 
 Returns the structural outline of a file: imports, exports, classes, functions, and their signatures. Enables the LLM to understand a file's purpose and contents before reading its full source.
 
@@ -370,7 +306,7 @@ Returns the structural outline of a file: imports, exports, classes, functions, 
 
 ---
 
-### 3.5 `POST /diagnostics`
+### 3.4 `POST /diagnostics`
 
 Returns current errors, warnings, and informational diagnostics from the language server. Use after making code changes to verify correctness, or to discover existing issues.
 
@@ -425,87 +361,18 @@ Returns current errors, warnings, and informational diagnostics from the languag
 }
 ```
 
----
-
-### 3.6 `POST /workspace_overview`
-
-Provides a high-level summary of the workspace: directory structure, languages, file counts, and active diagnostics. The LLM should call this at the beginning of a task to orient itself within the project.
-
-#### Request Parameters
-
-| Parameter       | Type      | Required | Description                                   |
-| --------------- | --------- | -------- | --------------------------------------------- |
-| `depth`         | `integer` | No       | Directory tree depth. Default: `2`.           |
-| `include_stats` | `boolean` | No       | Include language statistics. Default: `true`. |
-
-#### Response Fields
-
-| Field                | Type       | Description                                           |
-| -------------------- | ---------- | ----------------------------------------------------- |
-| `name`               | `string`   | Workspace/project name.                               |
-| `root`               | `string`   | Absolute path to workspace root.                      |
-| `languages`          | `object`   | Map of language to `{files, lines}` counts.           |
-| `structure`          | `string[]` | Indented directory tree as an array of strings.       |
-| `entry_points`       | `string[]` | Detected entry points (from package.json main, etc.). |
-| `active_diagnostics` | `object`   | Counts of current errors and warnings.                |
-
-#### Example
-
-**Request:**
-
-```json
-{ "depth": 2 }
-```
-
-**Response:**
-
-```json
-{
-  "name": "my-api-server",
-  "root": "/home/user/projects/my-api-server",
-  "languages": {
-    "typescript": { "files": 45, "lines": 8200 },
-    "json": { "files": 3, "lines": 120 }
-  },
-  "structure": [
-    "src/",
-    "  app.ts",
-    "  middleware/",
-    "    auth.ts",
-    "    logging.ts",
-    "  routes/",
-    "    api.ts",
-    "    admin.ts",
-    "  models/",
-    "  types/",
-    "test/",
-    "package.json",
-    "tsconfig.json"
-  ],
-  "entry_points": ["src/app.ts"],
-  "active_diagnostics": {
-    "errors": 2,
-    "warnings": 5
-  }
-}
-```
-
----
-
 ## 4. LLM Tool Definitions
 
 The following tool definitions are designed for use with OpenAI Function Calling, Anthropic Tool Use, or MCP (Model Context Protocol). Each tool maps directly to an API endpoint.
 
 ### 4.1 Tool Mapping
 
-| Tool Name            | Endpoint                   | When to Use                                           |
-| -------------------- | -------------------------- | ----------------------------------------------------- |
-| `code_search`        | `POST /search`             | Primary entry point. Use first to find relevant code. |
-| `code_inspect`       | `POST /inspect`            | Deep dive into a specific symbol found via search.    |
-| `code_references`    | `POST /references`         | Find all usages. Understand impact of changes.        |
-| `code_outline`       | `POST /file_outline`       | Understand file structure before reading source.      |
-| `code_diagnostics`   | `POST /diagnostics`        | Check for errors after changes.                       |
-| `workspace_overview` | `POST /workspace_overview` | Orient within the project at task start.              |
+| Tool Name          | Endpoint             | When to Use                                           |
+| ------------------ | -------------------- | ----------------------------------------------------- |
+| `code_search`      | `POST /search`       | Primary entry point. Use first to find relevant code. |
+| `code_references`  | `POST /references`   | Find all usages. Understand impact of changes.        |
+| `code_outline`     | `POST /file_outline` | Understand file structure before reading source.      |
+| `code_diagnostics` | `POST /diagnostics`  | Check for errors after changes.                       |
 
 ### 4.2 Tool Definitions (JSON Schema)
 
@@ -549,34 +416,14 @@ The following tool definitions are designed for use with OpenAI Function Calling
         "include_body": {
           "type": "boolean",
           "default": false,
-          "description": "Include full source code of each result. Warning: increases response size significantly."
+          "description": "Include source code and type signature. Combine with include_hover for JSDoc."
+        },
+        "include_hover": {
+          "type": "boolean",
+          "default": false,
+          "description": "Include JSDoc doc string via hover provider."
         },
         "limit": { "type": "integer", "default": 15 }
-      }
-    }
-  },
-  {
-    "name": "code_inspect",
-    "description": "Get detailed information about a specific symbol at a file location. Use after code_search to dive deeper into a result.",
-    "parameters": {
-      "type": "object",
-      "required": ["file", "line"],
-      "properties": {
-        "file": { "type": "string" },
-        "line": { "type": "integer" },
-        "include": {
-          "type": "array",
-          "items": {
-            "enum": [
-              "signature",
-              "doc",
-              "body",
-              "references_summary",
-              "type_hierarchy"
-            ]
-          },
-          "default": ["signature", "doc", "body"]
-        }
       }
     }
   },
@@ -623,16 +470,6 @@ The following tool definitions are designed for use with OpenAI Function Calling
         }
       }
     }
-  },
-  {
-    "name": "workspace_overview",
-    "description": "Get project structure, languages, and high-level stats. Use at the start of a task to orient yourself.",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "depth": { "type": "integer", "default": 2 }
-      }
-    }
   }
 ]
 ```
@@ -641,13 +478,12 @@ The following tool definitions are designed for use with OpenAI Function Calling
 
 LLM agents should follow this general workflow when working with the codebase:
 
-1. **`workspace_overview`** — Understand project structure and languages.
-2. **`code_search`** — Find relevant symbols using natural language or exact names.
-3. **`code_inspect`** — Get full details (source, type info, docs) for specific symbols.
-4. **`code_references`** — Understand usage patterns and change impact.
-5. **`code_diagnostics`** — Verify correctness after making changes.
+1. **`code_search`** — Find relevant symbols using natural language or exact names. Use `include_body: true` for signature + source, add `include_hover: true` for JSDoc.
+2. **`code_outline`** — Understand a file's imports and symbol structure before reading it.
+3. **`code_references`** — Understand usage patterns and change impact.
+4. **`code_diagnostics`** — Verify correctness after making changes.
 
-> **Typical Flow:** For a task like "modify authMiddleware to also accept API keys", the agent calls: `workspace_overview` → `code_search("authMiddleware")` → `code_inspect(file, line)` → `code_references(file, line)` → [make changes] → `code_diagnostics(file)`. This completes the entire cycle in 5 tool calls.
+> **Typical Flow:** For a task like "modify authMiddleware to also accept API keys", the agent calls: `code_search("authMiddleware", include_body: true)` → `code_references(file, line)` → [make changes] → `code_diagnostics(file)`. This completes the entire cycle in 3 tool calls.
 
 ---
 

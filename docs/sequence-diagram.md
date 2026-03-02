@@ -8,9 +8,9 @@ VS Code が拡張機能を読み込み、依存関係を組み立ててHTTPサ�
 sequenceDiagram
     participant VSCode as VS Code
     participant Ext as extension.ts<br/>(Composition Root)
-    participant Adapter as VscodeAdapters<br/>(×6)
-    participant UC as UseCases<br/>(×6)
-    participant Handler as HTTP Handlers<br/>(×6)
+    participant Adapter as VscodeAdapters<br/>(×4)
+    participant UC as UseCases<br/>(×4)
+    participant Handler as HTTP Handlers<br/>(×4)
     participant Server as LspRelayHttpServer
     participant PD as port-discovery.ts
     participant FS as File System<br/>(~/.semcode/)
@@ -21,25 +21,19 @@ sequenceDiagram
     rect rgb(240, 248, 255)
         Note over Ext,Handler: Dependency Injection (構成ルート)
         Ext->>Adapter: new VscodeSymbolSearcherAdapter(workspaceRoot)
-        Ext->>Adapter: new VscodeSymbolInspectorAdapter(workspaceRoot)
         Ext->>Adapter: new VscodeReferenceProviderAdapter(workspaceRoot)
         Ext->>Adapter: new VscodeFileOutlineProviderAdapter(workspaceRoot)
         Ext->>Adapter: new VscodeDiagnosticsProviderAdapter(workspaceRoot)
-        Ext->>Adapter: new VscodeWorkspaceOverviewProviderAdapter(workspaceRoot)
 
         Ext->>UC: new SearchSymbolsUseCase(symbolSearcher)
-        Ext->>UC: new InspectSymbolUseCase(symbolInspector)
         Ext->>UC: new FindReferencesUseCase(referenceProvider)
         Ext->>UC: new GetFileOutlineUseCase(fileOutlineProvider)
         Ext->>UC: new GetDiagnosticsUseCase(diagnosticsProvider)
-        Ext->>UC: new GetWorkspaceOverviewUseCase(overviewProvider)
 
         Ext->>Handler: new SearchHandler(searchUseCase)
-        Ext->>Handler: new InspectHandler(inspectUseCase)
         Ext->>Handler: new ReferencesHandler(refsUseCase)
         Ext->>Handler: new FileOutlineHandler(outlineUseCase)
         Ext->>Handler: new DiagnosticsHandler(diagUseCase)
-        Ext->>Handler: new WorkspaceOverviewHandler(overviewUseCase)
     end
 
     Ext->>Server: new LspRelayHttpServer(handlers)
@@ -136,12 +130,12 @@ sequenceDiagram
     participant Adapter as VS Code Adapter
     participant LSP as VS Code LSP
 
-    Client->>Server: POST /inspect<br/>{"file": "test.ts", "line": 999}
+    Client->>Server: POST /references<br/>{"file": "test.ts", "line": 999}
     Server->>Handler: handle(body)
     Handler->>UC: execute(symbolLocation)
-    UC->>Adapter: inspect(location, include)
-    Adapter->>LSP: vscode.executeHoverProvider(...)
-    LSP-->>Adapter: null (シンボル見つからず)
+    UC->>Adapter: findReferences(location)
+    Adapter->>LSP: vscode.executeReferenceProvider(...)
+    LSP-->>Adapter: [] (シンボル見つからず)
     Adapter-->>UC: Err({kind: "NOT_FOUND", entity: "symbol"})
     UC-->>Handler: Err({kind: "NOT_FOUND"})
 
@@ -223,14 +217,6 @@ sequenceDiagram
     P->>A: VscodeSymbolSearcherAdapter
     A->>VS: executeWorkspaceSymbolProvider
 
-    Note over Agent,VS: POST /inspect
-    Agent->>HTTP: curl POST /inspect
-    HTTP->>H: InspectHandler
-    H->>UC: InspectSymbolUseCase
-    UC->>P: SymbolInspector.inspect()
-    P->>A: VscodeSymbolInspectorAdapter
-    A->>VS: executeHoverProvider<br/>executeDocumentSymbolProvider<br/>executeReferenceProvider
-
     Note over Agent,VS: POST /references
     Agent->>HTTP: curl POST /references
     HTTP->>H: ReferencesHandler
@@ -255,13 +241,6 @@ sequenceDiagram
     P->>A: VscodeDiagnosticsProviderAdapter
     A->>VS: languages.getDiagnostics()
 
-    Note over Agent,VS: POST /workspace_overview
-    Agent->>HTTP: curl POST /workspace_overview
-    HTTP->>H: WorkspaceOverviewHandler
-    H->>UC: GetWorkspaceOverviewUseCase
-    UC->>P: WorkspaceOverviewProvider.getOverview()
-    P->>A: VscodeWorkspaceOverviewProviderAdapter
-    A->>VS: workspace.workspaceFolders<br/>languages.getDiagnostics()
 ```
 
 ## 6. レイヤー間の依存方向（アーキテクチャ概要）
