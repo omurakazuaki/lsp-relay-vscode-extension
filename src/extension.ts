@@ -12,6 +12,8 @@ import { VscodeSymbolSearcherAdapter } from './infrastructure/vscode-adapter/vsc
 import { VscodeReferenceProviderAdapter } from './infrastructure/vscode-adapter/vscode-reference-provider.adapter.js';
 import { VscodeFileOutlineProviderAdapter } from './infrastructure/vscode-adapter/vscode-file-outline-provider.adapter.js';
 import { VscodeDiagnosticsProviderAdapter } from './infrastructure/vscode-adapter/vscode-diagnostics-provider.adapter.js';
+import { VscodeLspWarmupAdapter } from './infrastructure/vscode-adapter/vscode-lsp-warmup.adapter.js';
+import { NodeTimerAdapter } from './infrastructure/vscode-adapter/node-timer.adapter.js';
 import { writePortFile, removePortFile } from './port-discovery.js';
 import { installSkill } from './infrastructure/lsp-resolve/skill-installer.js';
 import type { Platform } from './infrastructure/lsp-resolve/skill-installer.js';
@@ -22,9 +24,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
 
     // --- Composition root ---------------------------------------------------
-    const symbolSearcher = new VscodeSymbolSearcherAdapter(workspaceRoot);
-    const referenceProvider = new VscodeReferenceProviderAdapter(workspaceRoot);
-    const fileOutlineProvider = new VscodeFileOutlineProviderAdapter(workspaceRoot);
+    // warmup is shared across all LSP-dependent adapters so that concurrent
+    // requests only trigger a single warmup sequence (see LspWarmupPort contract).
+    const warmup = new VscodeLspWarmupAdapter(new NodeTimerAdapter());
+    const symbolSearcher = new VscodeSymbolSearcherAdapter(workspaceRoot, warmup);
+    const referenceProvider = new VscodeReferenceProviderAdapter(workspaceRoot, warmup);
+    const fileOutlineProvider = new VscodeFileOutlineProviderAdapter(workspaceRoot, warmup);
     const diagnosticsProvider = new VscodeDiagnosticsProviderAdapter(workspaceRoot);
 
     httpServer = new LspRelayHttpServer({
