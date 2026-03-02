@@ -74,6 +74,25 @@ export function findSymbolAtPosition(
     return null;
 }
 
+/**
+ * Find the deepest DocumentSymbol whose range contains the given line (0-based).
+ * Unlike findSymbolAtPosition, this ignores character offsets, which avoids
+ * false negatives on indented symbols (e.g. constructors, methods) when the
+ * caller passes character=0.
+ */
+export function findSymbolByLine(
+    symbols: vscode.DocumentSymbol[],
+    line: number,
+): vscode.DocumentSymbol | null {
+    for (const sym of symbols) {
+        if (sym.range.start.line <= line && line <= sym.range.end.line) {
+            const child = findSymbolByLine(sym.children, line);
+            return child ?? sym;
+        }
+    }
+    return null;
+}
+
 /** Find a DocumentSymbol by name, preferring the one closest to a given 0-based line. DFS. */
 export function findSymbolByNameAndLine(
     symbols: vscode.DocumentSymbol[],

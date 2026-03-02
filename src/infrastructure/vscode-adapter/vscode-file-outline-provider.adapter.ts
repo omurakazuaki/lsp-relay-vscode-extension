@@ -6,7 +6,7 @@ import type { Result } from '../../shared/result.js';
 import { Ok, Err } from '../../shared/result.js';
 import type { AppError } from '../../domain/errors/app-error.js';
 import type { FileOutline, OutlineSymbol, ImportEntry } from '../../domain/entities/file-outline.entity.js';
-import { VSCODE_KIND_MAP } from './adapter-utils.js';
+import { VSCODE_KIND_MAP, parseHover } from './adapter-utils.js';
 
 export class VscodeFileOutlineProviderAdapter implements FileOutlineProvider {
     constructor(private readonly workspaceRoot: string) {}
@@ -56,31 +56,56 @@ export class VscodeFileOutlineProviderAdapter implements FileOutlineProvider {
         }
 
         // Convert DocumentSymbol tree to OutlineSymbol[]
-        const symbols = docSymbols
-            .map((s) => toOutlineSymbol(s, options, 1))
-            .filter((s): s is OutlineSymbol => s !== null);
+        const symbols = (
+            await Promise.all(docSymbols.map((s) => toOutlineSymbol(s, options, uri, 1)))
+        ).filter((s): s is OutlineSymbol => s !== null);
 
         return Ok({ file, language: languageId, lines: lineCount, imports, symbols });
     }
 }
 
-function toOutlineSymbol(
+async function toOutlineSymbol(
     sym: vscode.DocumentSymbol,
     options: FileOutlineOptions,
+    uri: vscode.Uri,
     depth: number,
-): OutlineSymbol | null {
+): Promise<OutlineSymbol | null> {
     const kind = VSCODE_KIND_MAP[sym.kind] ?? 'unknown';
     const children: OutlineSymbol[] =
         depth < options.depth
-            ? sym.children
-                  .map((c) => toOutlineSymbol(c, options, depth + 1))
-                  .filter((c): c is OutlineSymbol => c !== null)
+            ? (
+                  await Promise.all(
+                      sym.children.map((c) => toOutlineSymbol(c, options, uri, depth + 1)),
+                  )
+              ).filter((c): c is OutlineSymbol => c !== null)
             : [];
+
+    let signature: string | null = null;
+    if (options.includeSignatures) {
+        // sym.detail is populated by some language servers (Go, Java) but is
+        // typically empty for TypeScript. Fall back to the hover provider which
+        // always returns the resolved type signature.
+        signature = sym.detail || null;
+        if (!signature) {
+            try {
+                const hovers =
+                    (await vscode.commands.executeCommand<vscode.Hover[]>(
+                        'vscode.executeHoverProvider',
+                        uri,
+                        sym.selectionRange.start,
+                    )) ?? [];
+                signature = parseHover(hovers[0]).signature;
+            } catch {
+                // graceful degradation — signature remains null
+            }
+        }
+    }
+
     return {
         name: sym.name,
         kind,
         line: sym.selectionRange.start.line + 1,
-        signature: options.includeSignatures ? (sym.detail || null) : null,
+        signature,
         exported: false, // conservative default without parsing source
         children,
     };

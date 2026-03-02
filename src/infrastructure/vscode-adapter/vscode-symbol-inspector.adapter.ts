@@ -8,7 +8,7 @@ import type { AppError } from '../../domain/errors/app-error.js';
 import type { SymbolDetail, ReferencesSummary, TypeHierarchy } from '../../domain/entities/symbol-detail.entity.js';
 import type { SymbolKind } from '../../domain/entities/symbol-info.entity.js';
 import type { SymbolLocation } from '../../domain/value-objects/symbol-location.value-object.js';
-import { VSCODE_KIND_MAP, parseHover, findSymbolAtPosition } from './adapter-utils.js';
+import { VSCODE_KIND_MAP, parseHover, findSymbolByLine } from './adapter-utils.js';
 
 export class VscodeSymbolInspectorAdapter implements SymbolInspector {
     constructor(private readonly workspaceRoot: string) {}
@@ -19,32 +19,15 @@ export class VscodeSymbolInspectorAdapter implements SymbolInspector {
     ): Promise<Result<SymbolDetail, AppError>> {
         const absPath = path.join(this.workspaceRoot, location.file);
         const uri = vscode.Uri.file(absPath);
-        const pos = new vscode.Position(location.line - 1, location.character);
-
-        // -- Hover: signature + doc --
-        let signature: string | null = null;
-        let doc: string | null = null;
-        if (include.includes('signature') || include.includes('doc')) {
-            try {
-                const hovers =
-                    (await vscode.commands.executeCommand<vscode.Hover[]>(
-                        'vscode.executeHoverProvider',
-                        uri,
-                        pos,
-                    )) ?? [];
-                const parsed = parseHover(hovers[0]);
-                signature = parsed.signature;
-                doc = parsed.doc;
-            } catch {
-                // graceful degradation — signature/doc remain null
-            }
-        }
 
         // -- Document symbols: name, kind, body --
+        // Find by line only (not character) so indented symbols (constructors,
+        // methods, etc.) are correctly resolved even when character defaults to 0.
         let symbolName = `${location.file}:${location.line}`;
         let symbolKind: SymbolKind = 'unknown';
         let body: string | null = null;
         let bodyLines: readonly [number, number] | undefined;
+        let hoverPos = new vscode.Position(location.line - 1, location.character);
 
         try {
             const docSymbols =
@@ -52,7 +35,7 @@ export class VscodeSymbolInspectorAdapter implements SymbolInspector {
                     'vscode.executeDocumentSymbolProvider',
                     uri,
                 )) ?? [];
-            const found = findSymbolAtPosition(docSymbols, pos);
+            const found = findSymbolByLine(docSymbols, location.line - 1);
             if (!found) {
                 return Err({
                     kind: 'NOT_FOUND',
@@ -62,6 +45,10 @@ export class VscodeSymbolInspectorAdapter implements SymbolInspector {
             }
             symbolName = found.name;
             symbolKind = VSCODE_KIND_MAP[found.kind] ?? 'unknown';
+            // Use the symbol's own selection-range start for hover so that the
+            // language server receives a position that is guaranteed to be on
+            // the identifier token, regardless of the caller's character offset.
+            hoverPos = found.selectionRange.start;
 
             if (include.includes('body')) {
                 const startLine = found.range.start.line;
@@ -79,6 +66,26 @@ export class VscodeSymbolInspectorAdapter implements SymbolInspector {
             return Err({ kind: 'LSP_UNAVAILABLE', reason: String(cause) });
         }
 
+        // -- Hover: signature + doc --
+        // Called after symbol lookup so we can use selectionRange.start.
+        let signature: string | null = null;
+        let doc: string | null = null;
+        if (include.includes('signature') || include.includes('doc')) {
+            try {
+                const hovers =
+                    (await vscode.commands.executeCommand<vscode.Hover[]>(
+                        'vscode.executeHoverProvider',
+                        uri,
+                        hoverPos,
+                    )) ?? [];
+                const parsed = parseHover(hovers[0]);
+                signature = parsed.signature;
+                doc = parsed.doc;
+            } catch {
+                // graceful degradation — signature/doc remain null
+            }
+        }
+
         // -- References summary --
         let referencesSummary: ReferencesSummary | undefined;
         if (include.includes('references_summary')) {
@@ -87,7 +94,7 @@ export class VscodeSymbolInspectorAdapter implements SymbolInspector {
                     (await vscode.commands.executeCommand<vscode.Location[]>(
                         'vscode.executeReferenceProvider',
                         uri,
-                        pos,
+                        hoverPos,
                     )) ?? [];
                 const byFile: Record<string, number[]> = {};
                 for (const ref of refs) {
@@ -116,7 +123,7 @@ export class VscodeSymbolInspectorAdapter implements SymbolInspector {
                     (await vscode.commands.executeCommand<vscode.TypeHierarchyItem[]>(
                         'vscode.prepareTypeHierarchy',
                         uri,
-                        pos,
+                        hoverPos,
                     )) ?? [];
                 const item = items[0];
                 if (item) {
