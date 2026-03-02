@@ -7,7 +7,7 @@ import { Ok, Err } from '../../shared/result.js';
 import type { AppError } from '../../domain/errors/app-error.js';
 import type { SymbolInfo, SymbolKind } from '../../domain/entities/symbol-info.entity.js';
 import type { SearchQuery } from '../../domain/value-objects/search-query.value-object.js';
-import { VSCODE_KIND_MAP, findSymbolByNameAndLine } from './adapter-utils.js';
+import { VSCODE_KIND_MAP, findSymbolByNameAndLine, parseHover } from './adapter-utils.js';
 
 /**
  * Adapter: implements SymbolSearcher using VS Code built-in commands.
@@ -52,8 +52,8 @@ export class VscodeSymbolSearcherAdapter implements SymbolSearcher {
                 relevance: calculateRelevance(s.name, query.query),
             }));
 
-        if (mapped.length > 0) {
-            await enrichResults(mapped, this.workspaceRoot, query.includeBody ?? false);
+        if (mapped.length > 0 && (query.includeBody || query.includeHover)) {
+            await enrichResults(mapped, this.workspaceRoot, query.includeBody, query.includeHover);
         }
 
         const results: SymbolInfo[] = mapped;
@@ -62,9 +62,18 @@ export class VscodeSymbolSearcherAdapter implements SymbolSearcher {
 }
 
 async function enrichResults(
-    results: Array<{ symbol: string; file: string; line: number; body: string | null; exported: boolean }>,
+    results: Array<{
+        symbol: string;
+        file: string;
+        line: number;
+        body: string | null;
+        signature: string | null;
+        doc: string | null;
+        exported: boolean;
+    }>,
     workspaceRoot: string,
     includeBody: boolean,
+    includeHover: boolean,
 ): Promise<void> {
     // Group by file to minimise redundant VS Code API calls and file reads
     const byFile = new Map<string, typeof results>();
@@ -94,9 +103,7 @@ async function enrichResults(
             result.exported = /^export\s/.test(declarationLine);
         }
 
-        if (!includeBody) continue;
-
-        // Body enrichment requires document symbols for exact source ranges
+        // Document symbols: required for body ranges, signature (detail), and hover position
         const uri = vscode.Uri.file(absPath);
         let docSymbols: vscode.DocumentSymbol[];
         try {
@@ -106,15 +113,39 @@ async function enrichResults(
                     uri,
                 )) ?? [];
         } catch {
-            continue; // graceful degradation: body stays null for this file
+            continue; // graceful degradation
         }
 
         for (const result of fileResults) {
-            const found = findSymbolByNameAndLine(docSymbols, result.symbol, result.line - 1);
-            if (found) {
+            // executeWorkspaceSymbolProvider appends "()" to functions; DocumentSymbol names do not.
+            const lookupName = result.symbol.replace(/\(\)$/, '');
+            const found = findSymbolByNameAndLine(docSymbols, lookupName, result.line - 1);
+            if (!found) continue;
+
+            // signature from DocumentSymbol.detail — zero extra API cost
+            result.signature = found.detail || null;
+
+            if (includeBody) {
                 const startLine = found.range.start.line;
                 const endLine = found.range.end.line;
                 result.body = fileLines.slice(startLine, endLine + 1).join('\n');
+            }
+
+            if (includeHover) {
+                try {
+                    const hovers =
+                        (await vscode.commands.executeCommand<vscode.Hover[]>(
+                            'vscode.executeHoverProvider',
+                            uri,
+                            found.selectionRange.start,
+                        )) ?? [];
+                    const parsed = parseHover(hovers[0]);
+                    // Hover signature is more accurate (resolves type aliases); prefer it over detail
+                    if (parsed.signature) result.signature = parsed.signature;
+                    result.doc = parsed.doc;
+                } catch {
+                    // graceful degradation: doc stays null
+                }
             }
         }
     }
