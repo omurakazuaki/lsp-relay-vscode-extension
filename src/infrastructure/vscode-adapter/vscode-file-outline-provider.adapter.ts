@@ -46,36 +46,62 @@ export class VscodeFileOutlineProviderAdapter implements FileOutlineProvider {
             }
         }
 
-        // Parse imports from file text
-        let imports: ImportEntry[] = [];
+        // Read file text once — used for import parsing and export detection
+        let text = '';
         try {
-            const text = openDoc?.getText() ?? (await fs.readFile(absPath, 'utf8'));
-            imports = parseImports(text);
+            text = openDoc?.getText() ?? (await fs.readFile(absPath, 'utf8'));
         } catch {
-            imports = [];
+            // text stays empty; imports and export detection degrade gracefully
+        }
+        const imports = parseImports(text);
+
+        // Build set of 0-based line indices where the `export` keyword appears
+        const exportedLineSet = new Set<number>();
+        for (const [i, line] of text.split('\n').entries()) {
+            if (/^export\s/.test((line ?? '').trimStart())) {
+                exportedLineSet.add(i);
+            }
         }
 
         // Convert DocumentSymbol tree to OutlineSymbol[]
         const symbols = (
-            await Promise.all(docSymbols.map((s) => toOutlineSymbol(s, options, uri, 1)))
+            await Promise.all(docSymbols.map((s) => toOutlineSymbol(s, options, uri, 1, exportedLineSet)))
         ).filter((s): s is OutlineSymbol => s !== null);
 
         return Ok({ file, language: languageId, lines: lineCount, imports, symbols });
     }
 }
 
+// Symbol kinds that meaningfully contain other named symbols (class members, enum
+// variants, etc.). Function/method bodies are excluded so local variables inside
+// them are never surfaced as outline children.
+const CONTAINER_SYMBOL_KINDS = new Set([
+    vscode.SymbolKind.Class,
+    vscode.SymbolKind.Module,
+    vscode.SymbolKind.Namespace,
+    vscode.SymbolKind.Package,
+    vscode.SymbolKind.Interface,
+    vscode.SymbolKind.Enum,
+    vscode.SymbolKind.Struct,
+    vscode.SymbolKind.Object,
+]);
+
 async function toOutlineSymbol(
     sym: vscode.DocumentSymbol,
     options: FileOutlineOptions,
     uri: vscode.Uri,
     depth: number,
+    exportedLines: ReadonlySet<number>,
 ): Promise<OutlineSymbol | null> {
     const kind = VSCODE_KIND_MAP[sym.kind] ?? 'unknown';
+
+    // Only recurse into container types (class, interface, enum, …).
+    // Function/method bodies are not recursed so local variables are hidden.
     const children: OutlineSymbol[] =
-        depth < options.depth
+        depth < options.depth && CONTAINER_SYMBOL_KINDS.has(sym.kind)
             ? (
                   await Promise.all(
-                      sym.children.map((c) => toOutlineSymbol(c, options, uri, depth + 1)),
+                      sym.children.map((c) => toOutlineSymbol(c, options, uri, depth + 1, exportedLines)),
                   )
               ).filter((c): c is OutlineSymbol => c !== null)
             : [];
@@ -106,7 +132,7 @@ async function toOutlineSymbol(
         kind,
         line: sym.selectionRange.start.line + 1,
         signature,
-        exported: false, // conservative default without parsing source
+        exported: exportedLines.has(sym.range.start.line),
         children,
     };
 }
